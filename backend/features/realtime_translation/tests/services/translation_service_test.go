@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/features/realtime_translation/services"
+	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
+	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/services"
 )
 
 // Mock for speech service

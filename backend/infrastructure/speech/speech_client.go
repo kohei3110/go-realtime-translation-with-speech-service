@@ -2,16 +2,19 @@ package speech
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log"
+	"io"
 	"os"
+
+	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
+
+	"errors"
+	"log"
 	"sync"
 	"time"
 
 	"github.com/Microsoft/cognitive-services-speech-sdk-go/speech"
 	"github.com/google/uuid"
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
 )
 
 // Config はSpeech Serviceの構成情報
@@ -116,6 +119,71 @@ func (c *SpeechClient) TranslateText(ctx context.Context, sourceLanguage, target
 	}
 }
 
+// SynthesizeText はテキストを音声に合成するメソッド
+func (c *SpeechClient) SynthesizeText(ctx context.Context, language string, text string) ([]byte, error) {
+	log.Printf("Synthesizing text to speech. Language: %s, Text length: %d", language, len(text))
+
+	// Speech設定を作成
+	config, err := speech.NewSpeechConfigFromSubscription(c.config.Key, c.config.Region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create speech config: %w", err)
+	}
+	defer config.Close()
+
+	// 言語を設定
+	config.SetSpeechSynthesisVoiceName(fmt.Sprintf("ja-JP-NanamiNeural"))
+	if language != "" {
+		// 言語コードから音声名を設定（実際のプロジェクトでは言語コードから適切な音声を選択するロジックが必要）
+		voiceName := fmt.Sprintf("%s-Neural", language)
+		config.SetSpeechSynthesisVoiceName(voiceName)
+	}
+
+	// シンセサイザーを作成
+	synthesizer, err := speech.NewSpeechSynthesizerFromConfig(config, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create synthesizer: %w", err)
+	}
+	defer synthesizer.Close()
+
+	// テキストの音声合成をスタート
+	task := synthesizer.StartSpeakingTextAsync(text)
+	var outcome speech.SpeechSynthesisOutcome
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case outcome = <-task:
+	}
+	defer outcome.Close()
+
+	if outcome.Error != nil {
+		return nil, fmt.Errorf("synthesis failed: %w", outcome.Error)
+	}
+
+	// 音声データストリームを作成
+	stream, err := speech.NewAudioDataStreamFromSpeechSynthesisResult(outcome.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create audio data stream: %w", err)
+	}
+	defer stream.Close()
+
+	// 音声データを読み込み
+	var allAudio []byte
+	audioChunk := make([]byte, 2048)
+	for {
+		n, err := stream.Read(audioChunk)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read audio data: %w", err)
+		}
+		allAudio = append(allAudio, audioChunk[:n]...)
+	}
+
+	log.Printf("Successfully synthesized text to speech, audio data size: %d bytes", len(allAudio))
+	return allAudio, nil
+}
+
 // StartStreamingSession はストリーミング翻訳セッションを開始するメソッド
 func (c *SpeechClient) StartStreamingSession(ctx context.Context, sourceLanguage, targetLanguage, audioFormat string) (string, error) {
 	// セッションIDを生成
@@ -145,11 +213,14 @@ func (c *SpeechClient) StartStreamingSession(ctx context.Context, sourceLanguage
 
 // ProcessAudioChunk は音声チャンクを処理するメソッド
 func (c *SpeechClient) ProcessAudioChunk(ctx context.Context, sessionID string, audioChunk []byte) ([]models.StreamingTranslationResponse, error) {
+	log.Printf("Processing audio chunk for session %s, chunk size: %d bytes", sessionID, len(audioChunk))
+
 	// セッションを取得
 	c.sessionMutex.Lock()
 	session, exists := c.sessions[sessionID]
 	if !exists {
 		c.sessionMutex.Unlock()
+		log.Printf("Session %s not found", sessionID)
 		return nil, errors.New("invalid session ID")
 	}
 
@@ -157,9 +228,12 @@ func (c *SpeechClient) ProcessAudioChunk(ctx context.Context, sessionID string, 
 	session.LastAccess = time.Now()
 	c.sessionMutex.Unlock()
 
+	log.Printf("Found session: %s (source: %s, target: %s)", sessionID, session.SourceLanguage, session.TargetLanguage)
+
 	// シンセサイザーを作成
 	synthesizer, err := speech.NewSpeechSynthesizerFromConfig(session.Config, nil)
 	if err != nil {
+		log.Printf("Failed to create synthesizer for session %s: %v", sessionID, err)
 		return nil, fmt.Errorf("failed to create synthesizer: %w", err)
 	}
 	defer synthesizer.Close()
@@ -168,15 +242,21 @@ func (c *SpeechClient) ProcessAudioChunk(ctx context.Context, sessionID string, 
 	ssml := fmt.Sprintf(`<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="%s">%s</speak>`,
 		session.SourceLanguage, string(audioChunk))
 
+	log.Printf("Starting speech synthesis for session %s with SSML length: %d", sessionID, len(ssml))
+
 	resultChan := synthesizer.StartSpeakingSsmlAsync(ssml)
 	select {
 	case <-ctx.Done():
+		log.Printf("Context cancelled for session %s", sessionID)
 		return nil, ctx.Err()
 	case result := <-resultChan:
 		if result.Error != nil {
+			log.Printf("Processing failed for session %s: %v", sessionID, result.Error)
 			return nil, fmt.Errorf("processing failed: %w", result.Error)
 		}
 		defer result.Close()
+
+		log.Printf("Successfully processed audio chunk for session %s", sessionID)
 
 		// レスポンスを作成
 		responses := []models.StreamingTranslationResponse{
@@ -189,6 +269,7 @@ func (c *SpeechClient) ProcessAudioChunk(ctx context.Context, sessionID string, 
 			},
 		}
 
+		log.Printf("Generated translation response for session %s: %+v", sessionID, responses[0])
 		return responses, nil
 	}
 }

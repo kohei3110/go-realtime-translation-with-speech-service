@@ -1,10 +1,11 @@
 package routes
 
 import (
+	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/controllers"
+	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/services"
+	"go-realtime-translation-with-speech-service/backend/infrastructure/speech"
+
 	"github.com/gin-gonic/gin"
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/features/realtime_translation/controllers"
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/features/realtime_translation/services"
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/infrastructure/speech"
 )
 
 // SetupRouter はAPIルーターをセットアップする
