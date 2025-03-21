@@ -1,21 +1,21 @@
-# リアルタイム翻訳サービス
+# Real-time Translation Service
 
-Azure Speech Serviceを使用したリアルタイム翻訳サービスのバックエンドAPIです。
+Backend API for real-time translation service using Azure Speech Service.
 
-## 必要要件
+## Requirements
 
-- Go 1.19以上
-- Azure Speech Serviceのアカウント
-- C++ コンパイラ (gcc または clang)
+- Go 1.19 or higher
+- Azure Speech Service account
+- C++ compiler (gcc or clang)
 - Azure Speech SDK for C/C++
 
-### macOSでの依存関係のインストール
+### Installing Dependencies on macOS
 
 ```bash
-# Homebrewを使用してC++コンパイラをインストール
+# Install C++ compiler using Homebrew
 brew install gcc
 
-# Azure Speech SDK for C/C++のインストール
+# Install Azure Speech SDK for C/C++
 curl -L https://aka.ms/csspeech/macosbinary -o speechsdk.tar.gz
 tar -xzf speechsdk.tar.gz
 sudo mkdir -p /usr/local/include
@@ -24,100 +24,100 @@ sudo cp SpeechSDK-macOS/lib/libMicrosoft.CognitiveServices.Speech.core.dylib /us
 rm -rf speechsdk.tar.gz SpeechSDK-macOS
 ```
 
-## 環境変数の設定
+## Setting Environment Variables
 
-以下の環境変数を設定してください：
+Set the following environment variables:
 
 ```bash
-export PORT=8080  # APIサーバーのポート（省略可、デフォルト: 8080）
-export AZURE_SPEECH_KEY=your_key_here  # Azure Speech Serviceのキー
-export AZURE_SPEECH_REGION=your_region_here  # Azure Speech Serviceのリージョン
+export PORT=8080  # API server port (optional, default: 8080)
+export AZURE_SPEECH_KEY=your_key_here  # Azure Speech Service key
+export AZURE_SPEECH_REGION=your_region_here  # Azure Speech Service region
 
-# Azure Speech SDKのライブラリパスを設定
+# Set Azure Speech SDK library paths
 export CGO_CFLAGS="-I/usr/local/include"
 export CGO_LDFLAGS="-L/usr/local/lib -lMicrosoft.CognitiveServices.Speech.core"
 export DYLD_LIBRARY_PATH="/usr/local/lib:$DYLD_LIBRARY_PATH"
 ```
 
-## セットアップ手順
+## Setup Instructions
 
-1. リポジトリのクローン
+1. Clone the repository
 ```bash
 git clone [repository-url]
 cd go-realtime-translation-with-speech-service
 ```
 
-2. 依存関係のインストール
+2. Install dependencies
 ```bash
 cd backend
 go mod tidy
 ```
 
-## Dockerでの実行方法
+## Running with Docker
 
-1. .envファイルの作成
+1. Create a .env file
 ```bash
 AZURE_SPEECH_KEY=your_key_here
 AZURE_SPEECH_REGION=your_region_here
 ```
 
-2. Dockerコンテナのビルドと起動
+2. Build and start Docker container
 ```bash
 docker compose up --build
 ```
 
-コンテナを停止するには以下のコマンドを実行してください：
+To stop the container, run the following command:
 ```bash
 docker compose down
 ```
 
-## APIの起動方法（ローカル環境）
+## Starting the API (Local Environment)
 
-1. バックエンドディレクトリに移動
+1. Navigate to the backend directory
 ```bash
-cd backend  # もし既にbackendディレクトリにいない場合
+cd backend  # if you're not already in the backend directory
 ```
 
-2. APIサーバーの起動
+2. Start the API server
 ```bash
 go run cmd/api/main.go
 ```
 
-サーバーが正常に起動すると、以下のようなメッセージが表示されます：
+When the server starts successfully, you will see a message like:
 ```
 Server is running on port 8080
 ```
 
-## APIの終了方法
+## Stopping the API
 
-サーバーを終了するには、ターミナルで `Ctrl+C` を押してください。グレースフルシャットダウンが実行されます。
+To stop the server, press `Ctrl+C` in the terminal. A graceful shutdown will be performed.
 
-## 仕様書
+## Specifications
 
-### バックエンド仕様
+### Backend Specification
 
-#### 技術スタック
-- 言語: Go 1.19+
-- フレームワーク: 標準ライブラリ + Gorilla WebSocket
-- 外部サービス: Azure Speech Service
-- インフラ: Docker
+#### Technology Stack
+- Language: Go 1.19+
+- Framework: Standard library + Gorilla WebSocket
+- External Service: Azure Speech Service
+- Infrastructure: Docker
 
-#### API エンドポイント
+#### API Endpoints
 
-1. **WebSocket接続エンドポイント**
-   - パス: `/ws`
-   - メソッド: GET (WebSocket Upgrade)
-   - 機能: 音声ストリームの送受信およびリアルタイム翻訳のための双方向通信
+1. **WebSocket Connection Endpoint**
+   - Path: `/ws`
+   - Method: GET (WebSocket Upgrade)
+   - Function: Bidirectional communication for audio stream transmission and real-time translation
 
-2. **ヘルスチェックエンドポイント**
-   - パス: `/health`
-   - メソッド: GET
-   - レスポンス: `{"status": "ok"}`
-   - 機能: サービスの稼働状態確認
+2. **Health Check Endpoint**
+   - Path: `/health`
+   - Method: GET
+   - Response: `{"status": "ok"}`
+   - Function: Service health verification
 
-#### WebSocketメッセージ形式
+#### WebSocket Message Format
 
-**クライアントからサーバーへ:**
+**From Client to Server:**
 ```json
 {
   "type": "start_translation",
@@ -130,7 +130,7 @@ Server is running on port 8080
 ```json
 {
   "type": "audio_data",
-  "data": "base64エンコードされた音声データ"
+  "data": "base64 encoded audio data"
 }
 ```
 
@@ -140,7 +140,7 @@ Server is running on port 8080
 }
 ```
 
-**サーバーからクライアントへ:**
+**From Server to Client:**
 ```json
 {
   "type": "translation_result",
@@ -153,74 +153,74 @@ Server is running on port 8080
 ```json
 {
   "type": "error",
-  "message": "エラーメッセージ"
+  "message": "error message"
 }
 ```
 
-#### エラーハンドリング
-- 全てのエラーはログに記録
-- クライアントにはJSON形式でエラーメッセージを返却
-- 接続エラーが発生した場合は自動的に再接続を試行
+#### Error Handling
+- All errors are logged
+- Error messages are returned to clients in JSON format
+- Automatic reconnection attempts in case of connection errors
 
-#### パフォーマンス要件
-- 最大同時接続数: 100
-- レイテンシ: 音声入力から翻訳結果表示まで1秒以内
-- CPU使用率: 平均60%以下
-- メモリ使用量: 最大512MB
+#### Performance Requirements
+- Maximum concurrent connections: 100
+- Latency: Within 1 second from voice input to translation display
+- CPU usage: Average below 60%
+- Memory usage: Maximum 512MB
 
-### フロントエンド仕様
+### Frontend Specification
 
-#### 技術スタック
-- 言語: TypeScript
-- フレームワーク: React
-- スタイリング: CSS Modules または Tailwind CSS
-- ビルドツール: Vite
+#### Technology Stack
+- Language: TypeScript
+- Framework: React
+- Styling: CSS Modules or Tailwind CSS
+- Build Tool: Vite
 
-#### 機能要件
+#### Functional Requirements
 
-1. **ユーザーインターフェース**
-   - シンプルで直感的なUI
-   - レスポンシブデザイン（モバイル、タブレット、デスクトップ対応）
-   - ダークモード/ライトモード切り替え
+1. **User Interface**
+   - Simple and intuitive UI
+   - Responsive design (supporting mobile, tablet, desktop)
+   - Dark mode/light mode toggle
 
-2. **音声入力**
-   - マイク音声の録音と送信
-   - 音声レベルインジケーター表示
-   - 無音検出による自動一時停止
+2. **Voice Input**
+   - Recording and sending microphone audio
+   - Audio level indicator display
+   - Automatic pause with silence detection
 
-3. **翻訳表示**
-   - 元の言語テキストと翻訳テキストの同時表示
-   - 翻訳履歴の保存と表示
-   - テキストのコピー機能
+3. **Translation Display**
+   - Simultaneous display of source language text and translated text
+   - Saving and displaying translation history
+   - Text copy function
 
-4. **設定**
-   - 言語ペアの選択（源言語と目標言語）
-   - 音声入力感度の調整
-   - フォントサイズ調整
+4. **Settings**
+   - Language pair selection (source and target languages)
+   - Voice input sensitivity adjustment
+   - Font size adjustment
 
-5. **状態表示**
-   - 接続状態インジケーター
-   - エラーメッセージの表示
-   - 音声認識状態の表示
+5. **Status Display**
+   - Connection status indicator
+   - Error message display
+   - Voice recognition status display
 
-#### 非機能要件
-- 初期読み込み時間: 2秒以内
-- オフライン機能: 基本UIの表示とエラーメッセージ
-- アクセシビリティ: WCAG 2.1 AAレベル準拠
-- モバイルデバイスの電池消費最適化
+#### Non-functional Requirements
+- Initial loading time: Within 2 seconds
+- Offline functionality: Basic UI display and error messages
+- Accessibility: WCAG 2.1 AA level compliance
+- Mobile device battery consumption optimization
 
-#### ユーザーフロー
-1. アプリケーションにアクセス
-2. 言語ペアを選択
-3. マイクへのアクセス許可を付与
-4. 開始ボタンをクリック
-5. 話し始める
-6. リアルタイムで翻訳結果を確認
-7. 必要に応じて停止/再開
-8. 翻訳履歴を確認またはエクスポート
+#### User Flow
+1. Access the application
+2. Select language pair
+3. Grant microphone access permission
+4. Click start button
+5. Start speaking
+6. Check translation results in real-time
+7. Stop/resume as needed
+8. Review or export translation history
 
-#### デザイン要件
-- モダンでクリーンなインターフェース
-- 視覚的フィードバックの提供
-- 色のコントラスト比: 4.5:1以上
-- アイコンと操作ボタンのサイズ: 最小44px×44px（タッチデバイス用）
+#### Design Requirements
+- Modern and clean interface
+- Visual feedback provision
+- Color contrast ratio: 4.5:1 or higher
+- Icon and action button size: Minimum 44px×44px (for touch devices)
