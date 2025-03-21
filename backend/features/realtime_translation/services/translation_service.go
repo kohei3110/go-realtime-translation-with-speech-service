@@ -22,6 +22,9 @@ type SpeechService interface {
 
 	// CloseStreamingSession はストリーミングセッションを終了するメソッド
 	CloseStreamingSession(ctx context.Context, sessionID string) error
+
+	// SynthesizeText はテキストを音声に合成するメソッド
+	SynthesizeText(ctx context.Context, language string, text string) ([]byte, error)
 }
 
 // TranslationService はリアルタイム翻訳サービスの実装
@@ -139,4 +142,32 @@ func (s *TranslationService) CloseStreamingSession(ctx context.Context, sessionI
 
 	log.Printf("Service: Successfully closed streaming session: %s", sessionID)
 	return nil
+}
+
+// SynthesizeTextToSpeech はテキストを音声に合成するメソッド
+func (s *TranslationService) SynthesizeTextToSpeech(ctx context.Context, req *models.SynthesisRequest) (*models.SynthesisResponse, error) {
+	log.Printf("Service: Synthesizing text to speech with request: %+v", req)
+
+	// リクエストのバリデーション
+	if err := req.Validate(); err != nil {
+		log.Printf("Service: Invalid synthesis request: %v", err)
+		return nil, fmt.Errorf("invalid request: %w", err)
+	}
+
+	// Azure Speech Serviceを呼び出してテキストを音声に合成
+	audioData, err := s.speechService.SynthesizeText(ctx, req.Language, req.Text)
+	if err != nil {
+		log.Printf("Service: Failed to synthesize text: %v", err)
+		return nil, fmt.Errorf("failed to synthesize text: %w", err)
+	}
+
+	log.Printf("Service: Successfully synthesized text to speech, audio data size: %d bytes", len(audioData))
+	// レスポンスを作成
+	response := &models.SynthesisResponse{
+		Language:  req.Language,
+		Text:      req.Text,
+		AudioData: audioData,
+	}
+
+	return response, nil
 }

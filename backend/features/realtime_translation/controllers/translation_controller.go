@@ -17,6 +17,7 @@ type TranslationService interface {
 	StartStreamingSession(ctx context.Context, req *models.StreamingTranslationRequest) (string, error)
 	ProcessAudioChunk(ctx context.Context, sessionID string, audioChunk []byte) ([]models.StreamingTranslationResponse, error)
 	CloseStreamingSession(ctx context.Context, sessionID string) error
+	SynthesizeTextToSpeech(ctx context.Context, req *models.SynthesisRequest) (*models.SynthesisResponse, error)
 }
 
 // TranslationController はリアルタイム翻訳に関するAPIエンドポイントを処理するコントローラー
@@ -34,6 +35,7 @@ func NewTranslationController(translationService TranslationService) *Translatio
 // RegisterRoutes はルーターにエンドポイントを登録する
 func (c *TranslationController) RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("/translate", c.TranslateText)
+	router.POST("/synthesize", c.SynthesizeTextToSpeech)
 
 	// ストリーミング翻訳関連のエンドポイント
 	streaming := router.Group("/streaming")
@@ -70,6 +72,49 @@ func (c *TranslationController) TranslateText(ctx *gin.Context) {
 
 	// 成功レスポンスを返す
 	ctx.JSON(http.StatusOK, resp)
+}
+
+// SynthesizeTextToSpeech はテキストを音声に合成するエンドポイント
+// POST /api/v1/synthesize
+func (c *TranslationController) SynthesizeTextToSpeech(ctx *gin.Context) {
+	var req models.SynthesisRequest
+
+	// リクエストボディをパース
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		log.Printf("Invalid synthesis request format: %v", err)
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
+		return
+	}
+
+	// リクエストのバリデーション
+	if err := req.Validate(); err != nil {
+		log.Printf("Invalid synthesis request: %v", err)
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Processing synthesis request. Language: %s, Text length: %d", req.Language, len(req.Text))
+
+	// 音声合成サービスを呼び出す
+	resp, err := c.translationService.SynthesizeTextToSpeech(ctx, &req)
+	if err != nil {
+		log.Printf("Text-to-speech synthesis failed: %v", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Synthesis failed: " + err.Error()})
+		return
+	}
+
+	log.Printf("Successfully synthesized text to speech. Audio data size: %d bytes", len(resp.AudioData))
+
+	// オーディオデータを含むレスポンスを返す
+	// 音声データをBase64でエンコード
+	audioBase64 := base64.StdEncoding.EncodeToString(resp.AudioData)
+
+	// 成功レスポンスを返す
+	ctx.JSON(http.StatusOK, gin.H{
+		"language":  resp.Language,
+		"text":      resp.Text,
+		"audioData": audioBase64,
+	})
 }
 
 // StartStreamingSession はストリーミング翻訳セッションを開始するエンドポイント

@@ -53,6 +53,9 @@ COPY --from=builder /usr/local/lib/libMicrosoft.CognitiveServices.Speech.core.so
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     uuid-runtime \
+    libcurl4 \
+    openssl \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/* \
     && ldconfig
 

@@ -3,6 +3,7 @@ package speech
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
@@ -116,6 +117,71 @@ func (c *SpeechClient) TranslateText(ctx context.Context, sourceLanguage, target
 		// AudioDataフィールドを使用
 		return string(result.Result.AudioData), 0.95, nil // 信頼度スコアは固定値を使用
 	}
+}
+
+// SynthesizeText はテキストを音声に合成するメソッド
+func (c *SpeechClient) SynthesizeText(ctx context.Context, language string, text string) ([]byte, error) {
+	log.Printf("Synthesizing text to speech. Language: %s, Text length: %d", language, len(text))
+
+	// Speech設定を作成
+	config, err := speech.NewSpeechConfigFromSubscription(c.config.Key, c.config.Region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create speech config: %w", err)
+	}
+	defer config.Close()
+
+	// 言語を設定
+	config.SetSpeechSynthesisVoiceName(fmt.Sprintf("ja-JP-NanamiNeural"))
+	if language != "" {
+		// 言語コードから音声名を設定（実際のプロジェクトでは言語コードから適切な音声を選択するロジックが必要）
+		voiceName := fmt.Sprintf("%s-Neural", language)
+		config.SetSpeechSynthesisVoiceName(voiceName)
+	}
+
+	// シンセサイザーを作成
+	synthesizer, err := speech.NewSpeechSynthesizerFromConfig(config, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create synthesizer: %w", err)
+	}
+	defer synthesizer.Close()
+
+	// テキストの音声合成をスタート
+	task := synthesizer.StartSpeakingTextAsync(text)
+	var outcome speech.SpeechSynthesisOutcome
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case outcome = <-task:
+	}
+	defer outcome.Close()
+
+	if outcome.Error != nil {
+		return nil, fmt.Errorf("synthesis failed: %w", outcome.Error)
+	}
+
+	// 音声データストリームを作成
+	stream, err := speech.NewAudioDataStreamFromSpeechSynthesisResult(outcome.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create audio data stream: %w", err)
+	}
+	defer stream.Close()
+
+	// 音声データを読み込み
+	var allAudio []byte
+	audioChunk := make([]byte, 2048)
+	for {
+		n, err := stream.Read(audioChunk)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read audio data: %w", err)
+		}
+		allAudio = append(allAudio, audioChunk[:n]...)
+	}
+
+	log.Printf("Successfully synthesized text to speech, audio data size: %d bytes", len(allAudio))
+	return allAudio, nil
 }
 
 // StartStreamingSession はストリーミング翻訳セッションを開始するメソッド
