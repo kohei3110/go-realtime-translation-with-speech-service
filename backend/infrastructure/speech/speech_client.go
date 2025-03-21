@@ -147,11 +147,14 @@ func (c *SpeechClient) StartStreamingSession(ctx context.Context, sourceLanguage
 
 // ProcessAudioChunk は音声チャンクを処理するメソッド
 func (c *SpeechClient) ProcessAudioChunk(ctx context.Context, sessionID string, audioChunk []byte) ([]models.StreamingTranslationResponse, error) {
+	log.Printf("Processing audio chunk for session %s, chunk size: %d bytes", sessionID, len(audioChunk))
+
 	// セッションを取得
 	c.sessionMutex.Lock()
 	session, exists := c.sessions[sessionID]
 	if !exists {
 		c.sessionMutex.Unlock()
+		log.Printf("Session %s not found", sessionID)
 		return nil, errors.New("invalid session ID")
 	}
 
@@ -159,9 +162,12 @@ func (c *SpeechClient) ProcessAudioChunk(ctx context.Context, sessionID string, 
 	session.LastAccess = time.Now()
 	c.sessionMutex.Unlock()
 
+	log.Printf("Found session: %s (source: %s, target: %s)", sessionID, session.SourceLanguage, session.TargetLanguage)
+
 	// シンセサイザーを作成
 	synthesizer, err := speech.NewSpeechSynthesizerFromConfig(session.Config, nil)
 	if err != nil {
+		log.Printf("Failed to create synthesizer for session %s: %v", sessionID, err)
 		return nil, fmt.Errorf("failed to create synthesizer: %w", err)
 	}
 	defer synthesizer.Close()
@@ -170,15 +176,21 @@ func (c *SpeechClient) ProcessAudioChunk(ctx context.Context, sessionID string, 
 	ssml := fmt.Sprintf(`<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="%s">%s</speak>`,
 		session.SourceLanguage, string(audioChunk))
 
+	log.Printf("Starting speech synthesis for session %s with SSML length: %d", sessionID, len(ssml))
+
 	resultChan := synthesizer.StartSpeakingSsmlAsync(ssml)
 	select {
 	case <-ctx.Done():
+		log.Printf("Context cancelled for session %s", sessionID)
 		return nil, ctx.Err()
 	case result := <-resultChan:
 		if result.Error != nil {
+			log.Printf("Processing failed for session %s: %v", sessionID, result.Error)
 			return nil, fmt.Errorf("processing failed: %w", result.Error)
 		}
 		defer result.Close()
+
+		log.Printf("Successfully processed audio chunk for session %s", sessionID)
 
 		// レスポンスを作成
 		responses := []models.StreamingTranslationResponse{
@@ -191,6 +203,7 @@ func (c *SpeechClient) ProcessAudioChunk(ctx context.Context, sessionID string, 
 			},
 		}
 
+		log.Printf("Generated translation response for session %s: %+v", sessionID, responses[0])
 		return responses, nil
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
 )
@@ -68,8 +69,11 @@ func (s *TranslationService) TranslateText(ctx context.Context, req *models.Tran
 
 // StartStreamingSession はストリーミング翻訳セッションを開始するメソッド
 func (s *TranslationService) StartStreamingSession(ctx context.Context, req *models.StreamingTranslationRequest) (string, error) {
+	log.Printf("Service: Starting streaming session with request: %+v", req)
+
 	// リクエストのバリデーション
 	if err := req.Validate(); err != nil {
+		log.Printf("Service: Invalid streaming request: %v", err)
 		return "", fmt.Errorf("invalid request: %w", err)
 	}
 
@@ -82,44 +86,57 @@ func (s *TranslationService) StartStreamingSession(ctx context.Context, req *mod
 	)
 
 	if err != nil {
+		log.Printf("Service: Failed to start streaming session: %v", err)
 		return "", fmt.Errorf("failed to start streaming session: %w", err)
 	}
 
+	log.Printf("Service: Successfully started streaming session: %s", sessionID)
 	return sessionID, nil
 }
 
 // ProcessAudioChunk は音声チャンクを処理するメソッド
 func (s *TranslationService) ProcessAudioChunk(ctx context.Context, sessionID string, audioChunk []byte) ([]models.StreamingTranslationResponse, error) {
+	log.Printf("Service: Processing audio chunk for session %s, size: %d bytes", sessionID, len(audioChunk))
+
 	// セッションIDのバリデーション
 	if sessionID == "" {
+		log.Print("Service: Empty session ID provided")
 		return nil, errors.New("session ID is required")
 	}
 
 	// 音声チャンクのバリデーション
 	if len(audioChunk) == 0 {
+		log.Printf("Service: Empty audio chunk for session %s", sessionID)
 		return nil, errors.New("audio chunk is empty")
 	}
 
 	// Azure Speech Serviceを呼び出して音声チャンクを処理
 	responses, err := s.speechService.ProcessAudioChunk(ctx, sessionID, audioChunk)
 	if err != nil {
+		log.Printf("Service: Failed to process audio chunk for session %s: %v", sessionID, err)
 		return nil, fmt.Errorf("failed to process audio chunk: %w", err)
 	}
 
+	log.Printf("Service: Successfully processed audio chunk for session %s, got %d responses", sessionID, len(responses))
 	return responses, nil
 }
 
 // CloseStreamingSession はストリーミングセッションを終了するメソッド
 func (s *TranslationService) CloseStreamingSession(ctx context.Context, sessionID string) error {
+	log.Printf("Service: Closing streaming session: %s", sessionID)
+
 	// セッションIDのバリデーション
 	if sessionID == "" {
+		log.Print("Service: Empty session ID provided")
 		return errors.New("session ID is required")
 	}
 
 	// Azure Speech Serviceを呼び出してストリーミングセッションを終了
 	if err := s.speechService.CloseStreamingSession(ctx, sessionID); err != nil {
+		log.Printf("Service: Failed to close streaming session %s: %v", sessionID, err)
 		return fmt.Errorf("failed to close streaming session: %w", err)
 	}
 
+	log.Printf("Service: Successfully closed streaming session: %s", sessionID)
 	return nil
 }

@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/base64"
+	"log"
 	"net/http"
 
 	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
@@ -78,22 +79,30 @@ func (c *TranslationController) StartStreamingSession(ctx *gin.Context) {
 
 	// リクエストボディをパース
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		log.Printf("Invalid request format: %v", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
 		return
 	}
 
 	// リクエストのバリデーション
 	if err := req.Validate(); err != nil {
+		log.Printf("Invalid streaming request: %v", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	log.Printf("Starting streaming session with source=%s, target=%s, format=%s",
+		req.SourceLanguage, req.TargetLanguage, req.AudioFormat)
+
 	// セッションを開始
 	sessionID, err := c.translationService.StartStreamingSession(ctx, &req)
 	if err != nil {
+		log.Printf("Failed to start streaming session: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start streaming session: " + err.Error()})
 		return
 	}
+
+	log.Printf("Successfully started streaming session: %s", sessionID)
 
 	// 成功レスポンスを返す
 	ctx.JSON(http.StatusOK, gin.H{"sessionId": sessionID})
@@ -112,35 +121,46 @@ func (c *TranslationController) ProcessAudioChunk(ctx *gin.Context) {
 
 	// リクエストボディをパース
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		log.Printf("Invalid request format: %v", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
 		return
 	}
 
 	// セッションIDのバリデーション
 	if req.SessionID == "" {
+		log.Print("Session ID is missing in request")
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Session ID is required"})
 		return
 	}
 
 	// 音声データのバリデーション
 	if req.AudioChunk == "" {
+		log.Printf("Audio chunk is missing for session: %s", req.SessionID)
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Audio chunk is required"})
 		return
 	}
 
+	log.Printf("Processing audio chunk request for session: %s, audio data length: %d", req.SessionID, len(req.AudioChunk))
+
 	// Base64デコード
 	audioData, err := base64.StdEncoding.DecodeString(req.AudioChunk)
 	if err != nil {
+		log.Printf("Failed to decode base64 audio data for session %s: %v", req.SessionID, err)
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid audio data encoding: " + err.Error()})
 		return
 	}
 
+	log.Printf("Decoded audio data for session %s: %d bytes", req.SessionID, len(audioData))
+
 	// 音声チャンクを処理
 	responses, err := c.translationService.ProcessAudioChunk(ctx, req.SessionID, audioData)
 	if err != nil {
+		log.Printf("Failed to process audio chunk for session %s: %v", req.SessionID, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process audio chunk: " + err.Error()})
 		return
 	}
+
+	log.Printf("Successfully processed audio chunk for session %s, got %d responses", req.SessionID, len(responses))
 
 	// 成功レスポンスを返す
 	ctx.JSON(http.StatusOK, responses)

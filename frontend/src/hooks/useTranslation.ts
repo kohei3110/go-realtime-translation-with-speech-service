@@ -85,16 +85,32 @@ export const useTranslation = () => {
   }, []);
 
   const stopRecording = useCallback(async () => {
-    if (recorder.current) {
+    try {
+      if (!recorder.current) {
+        return;
+      }
+      
+      // 録音を停止
       await recorder.current.stopRecording();
+      recorder.current = null;
+
+      // セッションを終了
       if (sessionId.current) {
         await translationService.closeStreamingSession(sessionId.current);
         sessionId.current = null;
       }
+
+      // メディアストリームを停止
       if (mediaStream.current) {
         mediaStream.current.getTracks().forEach(track => track.stop());
         mediaStream.current = null;
       }
+
+      setError(null);
+    } catch (err) {
+      console.error('録音の停止中にエラーが発生しました:', err);
+      setError('録音の停止中にエラーが発生しました。ページを再読み込みしてください。');
+    } finally {
       setIsRecording(false);
     }
   }, []);
@@ -102,13 +118,16 @@ export const useTranslation = () => {
   useEffect(() => {
     return () => {
       if (recorder.current) {
-        recorder.current.stopRecording();
+        recorder.current.stopRecording().catch(console.error);
+        recorder.current = null;
       }
       if (sessionId.current) {
-        translationService.closeStreamingSession(sessionId.current);
+        translationService.closeStreamingSession(sessionId.current).catch(console.error);
+        sessionId.current = null;
       }
       if (mediaStream.current) {
         mediaStream.current.getTracks().forEach(track => track.stop());
+        mediaStream.current = null;
       }
     };
   }, []);
