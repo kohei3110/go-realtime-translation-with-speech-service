@@ -3,7 +3,8 @@ package models_test
 import (
 	"testing"
 
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
+	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
+
 	"github.com/stretchr/testify/assert"
 )
 

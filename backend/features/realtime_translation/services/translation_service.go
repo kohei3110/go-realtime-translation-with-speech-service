@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
+	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
 )
 
 // SpeechService はAzure Speech Serviceとの連携を行うインターフェース

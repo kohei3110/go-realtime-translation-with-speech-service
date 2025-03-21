@@ -2,16 +2,18 @@ package speech
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log"
 	"os"
+
+	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
+
+	"errors"
+	"log"
 	"sync"
 	"time"
 
 	"github.com/Microsoft/cognitive-services-speech-sdk-go/speech"
 	"github.com/google/uuid"
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
 )
 
 // Config はSpeech Serviceの構成情報

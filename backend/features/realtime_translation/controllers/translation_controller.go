@@ -5,8 +5,9 @@ import (
 	"encoding/base64"
 	"net/http"
 
+	"go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
+
 	"github.com/gin-gonic/gin"
-	"github.com/kohei3110/go-realtime-translation-with-speech-service/backend/features/realtime_translation/models"
 )
 
 // TranslationService はリアルタイム翻訳サービスのインターフェース

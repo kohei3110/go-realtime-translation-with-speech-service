@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/microsoft/go-realtime-translation-with-speech-service/backend/api/routes"
+	"go-realtime-translation-with-speech-service/backend/api/routes"
 )
 
 func main() {
