@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"go-realtime-translation-with-speech-service/backend/speechclient"
+	speechtotext "go-realtime-translation-with-speech-service/backend/speechtotext"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 )
@@ -20,7 +20,7 @@ func main() {
 	endpoint := "https://eastus.api.cognitive.microsoft.com/"
 
 	// 3. TranscriptionsClientの作成
-	client, err := speechclient.NewTranscriptionsClient(endpoint, cred, nil)
+	client, err := speechtotext.NewTranscriptionsClient(endpoint, cred, nil)
 	if err != nil {
 		log.Fatalf("TranscriptionsClientの作成に失敗しました: %v", err)
 	}
@@ -29,7 +29,7 @@ func main() {
 	displayName := "task1"
 	locale := "ja-JP"
 	audioURL := "https://stspeechsdkwithgodemoeu1.blob.core.windows.net/samplewav/AESOP_JPN.wav"
-	transcription := speechclient.Transcription{
+	transcription := speechtotext.Transcription{
 		DisplayName: &displayName,
 		Locale:      &locale,
 		ContentUrls: []*string{&audioURL},
