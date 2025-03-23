@@ -5,15 +5,18 @@
 package translatortext
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	"net/http"
-	"strconv"
-	"strings"
 )
 
 // TranslatorClient contains the methods for the Translator group.
@@ -21,6 +24,8 @@ import (
 type TranslatorClient struct {
 	internal *azcore.Client
 	endpoint string
+	subscriptionKey string
+	subscriptionRegion string
 }
 
 // NewTranslatorClient creates a new instance of TranslatorClient with token-based authentication.
@@ -46,9 +51,18 @@ func NewTranslatorClient(endpoint string, credential azcore.TokenCredential, opt
     if err != nil {
         return nil, err
     }
+    
+    // Get subscription key and region from environment variables
+    subscriptionKey := os.Getenv("TRANSLATOR_SUBSCRIPTION_KEY")
+    subscriptionRegion := os.Getenv("TRANSLATOR_SUBSCRIPTION_REGION")
+	log.Printf("Using subscription key: %s\n", subscriptionKey)
+	log.Printf("Using subscription region: %s\n", subscriptionRegion)
+    
     client := &TranslatorClient{
         internal: cl,
         endpoint: endpoint,
+        subscriptionKey: subscriptionKey,
+        subscriptionRegion: subscriptionRegion,
     }
     return client, nil
 }
@@ -682,8 +696,8 @@ func (client *TranslatorClient) translateCreateRequest(ctx context.Context, to [
 	}
 	req.Raw().URL.RawQuery = reqQP.Encode()
 	req.Raw().Header["Accept"] = []string{"application/json"}
-	req.Raw().Header["Ocp-Apim-Subscription-Key"] = []string{"REPLACE_WITH_YOUR_SUBSCRIPTION_KEY"}
-	req.Raw().Header["Ocp-Apim-Subscription-Region"] = []string{"REPLACE_WITH_YOUR_SUBSCRIPTION_REGION"}
+	req.Raw().Header["Ocp-Apim-Subscription-Key"] = []string{client.subscriptionKey}
+	req.Raw().Header["Ocp-Apim-Subscription-Region"] = []string{client.subscriptionRegion}
 	if options != nil && options.XClientTraceID != nil {
 		req.Raw().Header["X-ClientTraceId"] = []string{*options.XClientTraceID}
 	}

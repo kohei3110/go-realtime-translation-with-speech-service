@@ -194,7 +194,6 @@ func ProcessAudioChunkHandler(c *gin.Context) {
 	// 4. 翻訳リクエストの作成
 	// FIXME: 文字起こし後のテキストを使用する必要があります
 	// ここではダミーのテキストを使用しています
-	// 実際のプロジェクトでは、音声データをテキストに変換する処理を実装します。
 	text := "Hello, how are you?"
 	textParam := []*translatortext.TranslateTextInput{
 		{
