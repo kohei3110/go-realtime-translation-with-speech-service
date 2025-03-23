@@ -48,3 +48,78 @@ Server is running on port 8080
 ## APIの終了方法
 
 サーバーを終了するには、ターミナルで `Ctrl+C` を押してください。グレースフルシャットダウンが実行されます。
+
+## curlを使用したAPI利用例
+
+APIとは以下のcurlコマンドを使って対話できます：
+
+### テキスト翻訳
+
+テキストをある言語から別の言語に翻訳する：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/translate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello, how are you?",
+    "sourceLanguage": "en",
+    "targetLanguage": "ja"
+  }'
+```
+
+### ストリーミング翻訳
+
+#### 1. ストリーミングセッションの開始
+
+```bash
+curl -X POST http://localhost:8080/api/v1/streaming/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sourceLanguage": "en",
+    "targetLanguage": "ja",
+    "audioFormat": "audio/wav"
+  }'
+```
+
+レスポンスには、後続のリクエストに必要な `sessionId` が含まれます：
+```json
+{
+  "sessionId": "12345678-1234-1234-1234-123456789abc"
+}
+```
+
+#### 2. オーディオチャンクの処理
+
+```bash
+curl -X POST http://localhost:8080/api/v1/streaming/process \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "12345678-1234-1234-1234-123456789abc",
+    "audioChunk": "BASE64でエンコードされたオーディオデータ"
+  }'
+```
+
+#### 3. ストリーミングセッションの終了
+
+```bash
+curl -X POST http://localhost:8080/api/v1/streaming/close \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "12345678-1234-1234-1234-123456789abc"
+  }'
+```
+
+### ヘルスチェック
+
+APIサーバーが実行中かどうかを確認する：
+
+```bash
+curl http://localhost:8080/api/v1/health
+```
+
+期待されるレスポンス：
+```json
+{
+  "status": "ok"
+}
+```

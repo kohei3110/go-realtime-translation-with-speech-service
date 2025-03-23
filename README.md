@@ -48,3 +48,78 @@ Server is running on port 8080
 ## Stopping the API
 
 To stop the server, press `Ctrl+C` in the terminal. A graceful shutdown will be performed.
+
+## API Usage Examples with curl
+
+You can interact with the translation API using curl commands as follows:
+
+### Text Translation
+
+To translate text from one language to another:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/translate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello, how are you?",
+    "sourceLanguage": "en",
+    "targetLanguage": "ja"
+  }'
+```
+
+### Streaming Translation
+
+#### 1. Start a streaming session
+
+```bash
+curl -X POST http://localhost:8080/api/v1/streaming/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sourceLanguage": "en",
+    "targetLanguage": "ja",
+    "audioFormat": "audio/wav"
+  }'
+```
+
+Response will include a `sessionId` that you'll need for subsequent requests:
+```json
+{
+  "sessionId": "12345678-1234-1234-1234-123456789abc"
+}
+```
+
+#### 2. Process audio chunks
+
+```bash
+curl -X POST http://localhost:8080/api/v1/streaming/process \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "12345678-1234-1234-1234-123456789abc",
+    "audioChunk": "BASE64_ENCODED_AUDIO_DATA"
+  }'
+```
+
+#### 3. Close the streaming session
+
+```bash
+curl -X POST http://localhost:8080/api/v1/streaming/close \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "12345678-1234-1234-1234-123456789abc"
+  }'
+```
+
+### Health Check
+
+To check if the API server is running:
+
+```bash
+curl http://localhost:8080/api/v1/health
+```
+
+Expected response:
+```json
+{
+  "status": "ok"
+}
+```
