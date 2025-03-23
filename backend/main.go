@@ -56,21 +56,21 @@ func main() {
 			if item.DetectedLanguage != nil {
 				log.Printf("検出された言語: %s (信頼度: %.2f)",
 					*item.DetectedLanguage.Language,
-					item.DetectedLanguage.Score)
+					*item.DetectedLanguage.Score)
 			}
 
 			// 翻訳結果
 			if item.Translations != nil {
 				for j, translation := range item.Translations {
 					log.Printf("  翻訳 %d.%d:", i+1, j+1)
-					log.Printf("  対象言語: %s", translation.To)
+					log.Printf("  対象言語: %s", *translation.To)
 					log.Printf("  翻訳文: %s", *translation.Text)
 
 					// transliterationがある場合
 					if translation.Transliteration != nil {
 						log.Printf("    音訳: %s (スクリプト: %s)",
 							*translation.Transliteration.Text,
-							translation.Transliteration.Script)
+							*translation.Transliteration.Script)
 					}
 				}
 			}
