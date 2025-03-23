@@ -682,6 +682,8 @@ func (client *TranslatorClient) translateCreateRequest(ctx context.Context, to [
 	}
 	req.Raw().URL.RawQuery = reqQP.Encode()
 	req.Raw().Header["Accept"] = []string{"application/json"}
+	req.Raw().Header["Ocp-Apim-Subscription-Key"] = []string{"REPLACE_WITH_YOUR_SUBSCRIPTION_KEY"}
+	req.Raw().Header["Ocp-Apim-Subscription-Region"] = []string{"REPLACE_WITH_YOUR_SUBSCRIPTION_REGION"}
 	if options != nil && options.XClientTraceID != nil {
 		req.Raw().Header["X-ClientTraceId"] = []string{*options.XClientTraceID}
 	}

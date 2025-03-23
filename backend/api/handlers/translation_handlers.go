@@ -94,6 +94,8 @@ func TranslateHandler(c *gin.Context) {
 	}
 
 	// 翻訳の実行
+	log.Printf("翻訳リクエスト: %s", req.Text)
+	log.Printf("ターゲット言語: %s", req.TargetLanguage)
 	result, err := translatorClient.Translate(context.Background(), targetLanguages, textParam, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("翻訳の実行に失敗しました: %v", err)})
