@@ -1,42 +1,39 @@
 # リアルタイム翻訳サービス
 
-Azure Speech Serviceを使用したリアルタイム翻訳サービスのバックエンドAPIです。
+Azure Speech Serviceを使用したリアルタイム翻訳サービスです。
 
-## 必要要件
+## AutoRest を使った Go Client Library の生成
 
-- Go 1.19以上
-- Azure Speech Serviceのアカウント
-- C++ コンパイラ (gcc または clang)
-- Azure Speech SDK for C/C++
+[AutoRest](https://github.com/Azure/autorest)に API 仕様書を読み込ませ、任意の言語でクライアントライブラリを生成させるアプローチを採用。
 
-### macOSでの依存関係のインストール
+今回は、Translator API 仕様書を読み込ませ、Go のクライアントライブラリを生成。
 
 ```bash
-# Homebrewを使用してC++コンパイラをインストール
-brew install gcc
-
-# Azure Speech SDK for C/C++のインストール
-curl -L https://aka.ms/csspeech/macosbinary -o speechsdk.tar.gz
-tar -xzf speechsdk.tar.gz
-sudo mkdir -p /usr/local/include
-sudo cp SpeechSDK-macOS/include/* /usr/local/include/
-sudo cp SpeechSDK-macOS/lib/libMicrosoft.CognitiveServices.Speech.core.dylib /usr/local/lib/
-rm -rf speechsdk.tar.gz SpeechSDK-macOS
+autorest --go --input-file=https://raw.githubusercontent.com/Azure/azure-rest-api-specs/refs/heads/master/specification/cognitiveservices/data-plane/TranslatorText/stable/v3.0/TranslatorText.json --output-folder=./translatortext --namespace=translatortext
 ```
 
-## 環境変数の設定
+生成されたモジュールをプロジェクトに追加するだけで、Azure リソースに対する API リクエストを生成可能。
 
-以下の環境変数を設定してください：
+- [Translator API Spec v3.0](https://learn.microsoft.com/en-us/azure/ai-services/translator/text-translation/reference/v3/reference)
 
-```bash
-export PORT=8080  # APIサーバーのポート（省略可、デフォルト: 8080）
-export AZURE_SPEECH_KEY=your_key_here  # Azure Speech Serviceのキー
-export AZURE_SPEECH_REGION=your_region_here  # Azure Speech Serviceのリージョン
+### Issues
 
-# Azure Speech SDKのライブラリパスを設定
-export CGO_CFLAGS="-I/usr/local/include"
-export CGO_LDFLAGS="-L/usr/local/lib -lMicrosoft.CognitiveServices.Speech.core"
-export DYLD_LIBRARY_PATH="/usr/local/lib:$DYLD_LIBRARY_PATH"
+- 翻訳結果のレスポンス受け取り時に、以下のエラーが発生する。対処法は以下のとおり。
+
+```
+unmarshalling type *[]*translatortext.TranslateResultAllItem: unmarshalling type *translatortext.TranslateResultAllItem: struct field DetectedLanguage: unmarshalling type *translatortext.TranslateResultAllItemDetectedLanguage: struct field Score: json: cannot unmarshal number 1.0 into Go value of type int32
+→
+// 以下のような構造体を探します
+type TranslateResultAllItemDetectedLanguage struct {
+    Language string `json:"language,omitempty"`
+    Score    int32  `json:"score,omitempty"` // このフィールドの型が問題
+}
+ 
+// 以下のように変更します
+type TranslateResultAllItemDetectedLanguage struct {
+    Language string  `json:"language,omitempty"`
+    Score    float64 `json:"score,omitempty"` // int32からfloat64に変更
+}
 ```
 
 ## セットアップ手順
@@ -47,35 +44,9 @@ git clone [repository-url]
 cd go-realtime-translation-with-speech-service
 ```
 
-2. 依存関係のインストール
-```bash
-cd backend
-go mod tidy
-```
-
-## Dockerでの実行方法
-
-1. .envファイルの作成
-```bash
-AZURE_SPEECH_KEY=your_key_here
-AZURE_SPEECH_REGION=your_region_here
-```
-
-2. Dockerコンテナのビルドと起動
-```bash
-docker compose up --build
-```
-
-コンテナを停止するには以下のコマンドを実行してください：
-```bash
-docker compose down
-```
-
-## APIの起動方法（ローカル環境）
-
 1. バックエンドディレクトリに移動
 ```bash
-cd backend  # もし既にbackendディレクトリにいない場合
+cd backend
 ```
 
 2. APIサーバーの起動
