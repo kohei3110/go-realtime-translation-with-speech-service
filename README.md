@@ -45,6 +45,8 @@ When the server starts successfully, you will see a message like:
 Server is running on port 8080
 ```
 
+- [How to setup frontend App](./frontend/README.md)
+
 ## Stopping the API
 
 To stop the server, press `Ctrl+C` in the terminal. A graceful shutdown will be performed.

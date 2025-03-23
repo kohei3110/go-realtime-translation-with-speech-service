@@ -1,66 +1,66 @@
-# Real-time Translation Application Frontend
+# リアルタイム翻訳アプリケーション フロントエンド
 
-This is the frontend of a web application that performs real-time voice translation. It is built using React, TypeScript, and Vite.
+音声のリアルタイム翻訳を行うWebアプリケーションのフロントエンドです。React、TypeScript、Viteを使用して構築されています。
 
-## Features
+## 機能
 
-- Text translation
-- Real-time voice translation
-- Modern UI based on Material-UI
+- テキスト翻訳
+- リアルタイム音声翻訳
+- Material-UIベースのモダンなUI
 
-## Requirements
+## 必要条件
 
-- Node.js (v18 or higher)
-- npm or yarn
+- Node.js (v18以上)
+- npm または yarn
 
-## Setup Instructions
+## セットアップ手順
 
-1. Install dependencies:
+1. 依存パッケージのインストール:
 ```bash
 npm install
-# or
+# または
 yarn
 ```
 
-2. Start development server:
+2. 開発サーバーの起動:
 ```bash
 npm run dev
-# or
+# または
 yarn dev
 ```
 
-The application will start at http://localhost:5173 by default.
+アプリケーションは デフォルトで http://localhost:5173 で起動します。
 
-## Available Scripts
+## 利用可能なスクリプト
 
-- `npm run dev`: Start development server
-- `npm run build`: Build application for production
-- `npm run preview`: Preview built application
-- `npm run lint`: Validate code with ESLint
+- `npm run dev`: 開発サーバーを起動します
+- `npm run build`: プロダクション用にアプリケーションをビルドします
+- `npm run preview`: ビルドしたアプリケーションをプレビューします
+- `npm run lint`: ESLintでコードを検証します
 
-## Development
+## 開発
 
-This application uses the following key technologies:
+このアプリケーションは以下の主要な技術を使用しています：
 
 - React v19
 - TypeScript
 - Material-UI v6
 - Vite v6
-- Axios (API client)
+- Axios (APIクライアント)
 
-For backend API communication, it uses `http://localhost:8080` by default.
+バックエンドAPIとの通信には、デフォルトで `http://localhost:8080` を使用します。
 
-## Production Deployment
+## 本番環境へのデプロイ
 
-Generate production files by running the build:
+ビルドを実行してプロダクション用のファイルを生成：
 
 ```bash
 npm run build
-# or
+# または
 yarn build
 ```
 
-Built files will be generated in the `dist` directory.
+ビルドされたファイルは `dist` ディレクトリに生成されます。
 
 ## Expanding the ESLint configuration
 
