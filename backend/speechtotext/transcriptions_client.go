@@ -87,8 +87,6 @@ func (client *TranscriptionsClient) createCreateRequest(ctx context.Context, tra
 		return nil, err
 	}
 	req.Raw().Header["Accept"] = []string{"application/json"}
-	// TODO: FIXME
-	req.Raw().Header["Ocp-Apim-Subscription-Key"] = []string{"REPLACE_WITH_YOUR_SUBSCRIPTION_KEY"}
 	if err := runtime.MarshalAsJSON(req, transcription); err != nil {
 	return nil, err
 }
@@ -185,8 +183,6 @@ func (client *TranscriptionsClient) getCreateRequest(ctx context.Context, id str
 		return nil, err
 	}
 	req.Raw().Header["Accept"] = []string{"application/json"}
-	// TODO: FIXME
-	req.Raw().Header["Ocp-Apim-Subscription-Key"] = []string{"REPLACE_WITH_YOUR_SUBSCRIPTION_KEY"}
 	return req, nil
 }
 
