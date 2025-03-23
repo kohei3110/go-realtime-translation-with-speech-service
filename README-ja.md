@@ -45,6 +45,8 @@ type TranslateResultAllItemDetectedLanguage struct {
 Server is running on port 8080
 ```
 
+- [フロントエンド起動手順書](./frontend/README-ja.md)
+
 ## APIの終了方法
 
 サーバーを終了するには、ターミナルで `Ctrl+C` を押してください。グレースフルシャットダウンが実行されます。

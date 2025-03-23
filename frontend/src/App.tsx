@@ -1,6 +1,6 @@
 import './App.css'
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
-import { RealtimeTranslation } from './features/realtime-translation/RealtimeTranslation'
+import { TranslationApp } from './features/realtime-translation/TranslationApp'
 
 const theme = createTheme({
   palette: {
@@ -12,7 +12,7 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <RealtimeTranslation />
+      <TranslationApp />
     </ThemeProvider>
   )
 }
