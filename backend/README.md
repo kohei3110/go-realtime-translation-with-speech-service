@@ -1,22 +1,22 @@
-# リアルタイム音声翻訳サービス バックエンド
+# Real-time Speech Translation Service Backend
 
-## 概要
+## Overview
 
-このバックエンドサービスは、Azure Translator Serviceを利用して、テキスト翻訳およびリアルタイム音声ストリーミング翻訳機能を提供するRESTful APIです。Goで実装され、Ginフレームワークを使用しています。
+This backend service is a RESTful API that provides text translation and real-time speech streaming translation functionality using Azure Translator Service. It is implemented in Go and uses the Gin framework.
 
-## システムアーキテクチャ
+## System Architecture
 
-システムは以下のコンポーネントで構成されています：
+The system consists of the following components:
 
-- **Gin Webサーバー**: HTTPリクエストを処理し、各種エンドポイントを提供
-- **Azure Translator クライアント**: Azure Translator Text APIと通信するためのクライアント
-- **セッション管理**: ストリーミング翻訳セッションを管理するためのインメモリストレージ
-- **音声処理**: Base64エンコードされた音声データを処理するためのモジュール
+- **Gin Web Server**: Processes HTTP requests and provides various endpoints
+- **Azure Translator Client**: Client for communicating with the Azure Translator Text API
+- **Session Management**: In-memory storage for managing streaming translation sessions
+- **Audio Processing**: Module for processing Base64 encoded audio data
 
 ```
 +----------------+        +-------------------+
 |                |        |                   |
-| クライアント     +------->+ Gin Webサーバー   |
+| Client         +------->+ Gin Web Server    |
 |                |        |                   |
 +----------------+        +--------+----------+
                                   |
@@ -28,32 +28,32 @@
                           +----------------+         +------------------+
 ```
 
-## API エンドポイント
+## API Endpoints
 
-### ヘルスチェック
+### Health Check
 
 ```
 GET /api/v1/health
 ```
 
-サーバーの状態を確認するためのエンドポイント。
+Endpoint to check the server status.
 
-**レスポンス例**:
+**Response Example**:
 ```json
 {
   "status": "ok"
 }
 ```
 
-### テキスト翻訳
+### Text Translation
 
 ```
 POST /api/v1/translate
 ```
 
-テキストを指定した言語に翻訳します。
+Translates text to the specified language.
 
-**リクエスト例**:
+**Request Example**:
 ```json
 {
   "text": "こんにちは",
@@ -62,7 +62,7 @@ POST /api/v1/translate
 }
 ```
 
-**レスポンス例**:
+**Response Example**:
 ```json
 {
   "originalText": "こんにちは",
@@ -73,15 +73,15 @@ POST /api/v1/translate
 }
 ```
 
-### ストリーミング翻訳セッション開始
+### Start Streaming Translation Session
 
 ```
 POST /api/v1/streaming/start
 ```
 
-ストリーミング翻訳セッションを開始します。
+Starts a streaming translation session.
 
-**リクエスト例**:
+**Request Example**:
 ```json
 {
   "sourceLanguage": "ja",
@@ -90,22 +90,22 @@ POST /api/v1/streaming/start
 }
 ```
 
-**レスポンス例**:
+**Response Example**:
 ```json
 {
   "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
 
-### 音声データ処理
+### Process Audio Data
 
 ```
 POST /api/v1/streaming/process
 ```
 
-Base64エンコードされた音声チャンクを送信して処理します。
+Sends and processes Base64 encoded audio chunks.
 
-**リクエスト例**:
+**Request Example**:
 ```json
 {
   "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -113,7 +113,7 @@ Base64エンコードされた音声チャンクを送信して処理します�
 }
 ```
 
-**レスポンス例**:
+**Response Example**:
 ```json
 [
   {
@@ -126,113 +126,113 @@ Base64エンコードされた音声チャンクを送信して処理します�
 ]
 ```
 
-### ストリーミングセッション終了
+### Close Streaming Session
 
 ```
 POST /api/v1/streaming/close
 ```
 
-ストリーミングセッションを終了します。
+Ends a streaming session.
 
-**リクエスト例**:
+**Request Example**:
 ```json
 {
   "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
 
-**レスポンス例**:
+**Response Example**:
 ```json
 {
-  "status": "セッションを終了しました"
+  "status": "Session closed"
 }
 ```
 
-## 音声データ要件
+## Audio Data Requirements
 
-- サポートされているフォーマット: WAV
-- サンプリングレート: 16kHz推奨
-- ビット深度: 16bit
-- チャンネル: モノラル
-- Base64エンコード: 音声データはBase64エンコードして送信する必要があります
+- Supported formats: WAV
+- Sampling rate: 16kHz recommended
+- Bit depth: 16bit
+- Channels: Mono
+- Base64 encoding: Audio data must be sent Base64 encoded
 
-## サービスプリンシパルの作成
+## Creating a Service Principal
 
-Azure CLIを使用してサービスプリンシパルを作成します。
+Create a service principal using Azure CLI.
 
 ```bash
 az ad sp create-for-rbac --name "go-translation-service" --role contributor --scopes /subscriptions/{subscription-id}/resourceGroups/{resource-group}
 ```
 
-コマンド実行後、以下の情報が表示されます：
+After executing the command, the following information will be displayed:
 - appId (AZURE_CLIENT_ID)
 - password (AZURE_CLIENT_SECRET)
 - tenant (AZURE_TENANT_ID)
 
-## 権限を設定
+## Setting Permissions
 
-- 簡単のため、リソースグループスコープで `共同作成者` を付与。
-- 本番環境では、最小権限の原則に従い、必要な権限のみを付与することをお勧めします。
+- For simplicity, grant `Contributor` at the resource group scope.
+- In production environments, it is recommended to follow the principle of least privilege and grant only necessary permissions.
 
-## 環境変数の設定
+## Setting Environment Variables
 
-- `.env.example` ファイルをコピーし、`.env` ファイルを作成。
+- Copy the `.env.example` file and create a `.env` file.
 
 ```bash
 cp .env.example .env
 ```
 
-- `.env` ファイルに以下の環境変数を設定。
+- Set the following environment variables in the `.env` file.
 
-| 環境変数 | 説明 |
+| Environment Variable | Description |
 |----------|------|
-| AZURE_CLIENT_ID | サービスプリンシパルのクライアントID |
-| AZURE_CLIENT_SECRET | サービスプリンシパルのシークレット |
-| AZURE_TENANT_ID | Entra IDのテナントID |
-| TRANSLATOR_SUBSCRIPTION_KEY | Azure Translator リソースのサブスクリプションキー |
-| TRANSLATOR_SUBSCRIPTION_REGION | Azure Translator リソースのリージョン（例: japaneast） |
-| PORT | サーバーが使用するポート（デフォルト: 8080） |
+| AZURE_CLIENT_ID | Service Principal Client ID |
+| AZURE_CLIENT_SECRET | Service Principal Secret |
+| AZURE_TENANT_ID | Entra ID Tenant ID |
+| TRANSLATOR_SUBSCRIPTION_KEY | Azure Translator resource subscription key |
+| TRANSLATOR_SUBSCRIPTION_REGION | Azure Translator resource region (e.g., japaneast) |
+| PORT | Port used by the server (default: 8080) |
 
-## ローカル開発
+## Local Development
 
-### 必要条件
+### Requirements
 
-- Go 1.16以上
-- Azure サブスクリプション
-- Azure Translator リソース
+- Go 1.16 or higher
+- Azure subscription
+- Azure Translator resource
 
-### ローカル実行
+### Local Execution
 
 ```bash
 go run main.go
 ```
 
-## Dockerでの実行
+## Running with Docker
 
 ```bash
-# Dockerイメージをビルド
+# Build Docker image
 docker build -t go-translation-service .
 
-# コンテナを実行
+# Run container
 docker run --env-file .env -p 8080:8080 go-translation-service
 ```
 
-## エラーハンドリング
+## Error Handling
 
-サービスは以下のHTTPステータスコードを返します：
+The service returns the following HTTP status codes:
 
-- 200 OK: リクエストが成功
-- 400 Bad Request: リクエストパラメータが無効
-- 401 Unauthorized: 認証に失敗
-- 404 Not Found: リソースが見つからない
-- 500 Internal Server Error: サーバー内部エラー
+- 200 OK: Request successful
+- 400 Bad Request: Invalid request parameters
+- 401 Unauthorized: Authentication failed
+- 404 Not Found: Resource not found
+- 500 Internal Server Error: Server internal error
 
-## パフォーマンスに関する考慮事項
+## Performance Considerations
 
-- ストリーミングセッションはインメモリで管理されるため、サーバーの再起動時にすべてのセッションが失われます
-- 大規模な環境では、Redisなどの外部キャッシュを使用してセッション状態を保存することを検討してください
-- 長時間のアイドル状態のセッションを自動的に削除するタイムアウトメカニズムの実装を検討してください
+- Streaming sessions are managed in memory, so all sessions will be lost when the server restarts
+- For large-scale environments, consider using external caching like Redis to store session state
+- Consider implementing a timeout mechanism to automatically delete sessions that have been idle for a long time
 
-## サポートされている言語
+## Supported Languages
 
-サポートされている言語のリストは、Azure Translator Serviceのドキュメントを参照してください。現在、100以上の言語がサポートされています。
+For a list of supported languages, refer to the Azure Translator Service documentation. Currently, more than 100 languages are supported.
