@@ -35,8 +35,6 @@ func main() {
 
 	// 5. 翻訳の実行
 	ctx := context.Background()
-	// リクエストのデバッグ
-	log.Printf("ctx: %s", ctx)
 
 	result, err := client.Translate(ctx, []string{"ja"}, textParam, nil)
 	if err != nil {
