@@ -2,6 +2,8 @@
 
 Real-time translation service using Azure Speech Service.
 
+日本語版のREADMEは[こちら](./README-ja.md)をご覧ください。
+
 ## Generating Go Client Library with AutoRest
 
 We use [AutoRest](https://github.com/Azure/autorest) to generate a client library by loading API specifications. The approach allows generating client libraries in any supported language.
