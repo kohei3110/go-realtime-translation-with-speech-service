@@ -92,6 +92,144 @@ Server is running on port 8080
 
 To stop the server, press `Ctrl+C` in the terminal. A graceful shutdown will be performed.
 
+## Using the Web API
+
+The API provides the following endpoints for both REST API and streaming translation capabilities:
+
+### Health Check API
+- **Endpoint**: `GET /api/v1/health`
+- **Description**: Check if the API server is running
+- **Example**:
+  ```bash
+  curl http://localhost:8080/api/v1/health
+  ```
+- **Response**:
+  ```json
+  {
+    "status": "ok",
+    "time": "2025-03-23T12:00:00Z"
+  }
+  ```
+
+### Text Translation API
+- **Endpoint**: `POST /api/v1/translate`
+- **Description**: Translate text from one language to another
+- **Request Body**:
+  ```json
+  {
+    "text": "こんにちは",
+    "targetLanguage": "en", 
+    "sourceLanguage": "ja"  // Optional: If not provided, language will be auto-detected
+  }
+  ```
+- **Example**:
+  ```bash
+  curl -X POST http://localhost:8080/api/v1/translate \
+    -H "Content-Type: application/json" \
+    -d '{"text": "こんにちは", "targetLanguage": "en"}'
+  ```
+- **Response**:
+  ```json
+  {
+    "originalText": "こんにちは",
+    "translatedText": "Hello",
+    "sourceLanguage": "ja",
+    "targetLanguage": "en",
+    "confidence": 0.98
+  }
+  ```
+
+### Streaming Translation APIs
+
+#### 1. Start Streaming Session
+- **Endpoint**: `POST /api/v1/streaming/start`
+- **Description**: Start a new streaming translation session
+- **Request Body**:
+  ```json
+  {
+    "sourceLanguage": "ja",
+    "targetLanguage": "en",
+    "audioFormat": "wav"
+  }
+  ```
+- **Example**:
+  ```bash
+  curl -X POST http://localhost:8080/api/v1/streaming/start \
+    -H "Content-Type: application/json" \
+    -d '{"sourceLanguage": "ja", "targetLanguage": "en", "audioFormat": "wav"}'
+  ```
+- **Response**:
+  ```json
+  {
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
+  ```
+
+#### 2. Process Audio Chunk
+- **Endpoint**: `POST /api/v1/streaming/process`
+- **Description**: Process an audio chunk for translation in an active session
+- **Request Body**:
+  ```json
+  {
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "audioChunk": "base64EncodedAudioData"
+  }
+  ```
+- **Example**:
+  ```bash
+  curl -X POST http://localhost:8080/api/v1/streaming/process \
+    -H "Content-Type: application/json" \
+    -d '{"sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "audioChunk": "base64EncodedAudioData"}'
+  ```
+- **Response**:
+  ```json
+  [
+    {
+      "sourceLanguage": "ja",
+      "targetLanguage": "en",
+      "translatedText": "Hello, how are you?",
+      "isFinal": false,
+      "segmentId": "segment-123"
+    }
+  ]
+  ```
+
+#### 3. Close Streaming Session
+- **Endpoint**: `POST /api/v1/streaming/close`
+- **Description**: Close an active streaming translation session
+- **Request Body**:
+  ```json
+  {
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
+  ```
+- **Example**:
+  ```bash
+  curl -X POST http://localhost:8080/api/v1/streaming/close \
+    -H "Content-Type: application/json" \
+    -d '{"sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}'
+  ```
+- **Response**:
+  ```json
+  {
+    "status": "セッションを終了しました"
+  }
+  ```
+
+### Error Responses
+All API endpoints return appropriate HTTP status codes:
+- `400 Bad Request`: Invalid input parameters
+- `401 Unauthorized`: Authentication failed
+- `404 Not Found`: Resource not found
+- `500 Internal Server Error`: Server-side error
+
+Error responses are formatted as JSON:
+```json
+{
+  "error": "エラーメッセージの詳細"
+}
+```
+
 ## Specifications
 
 ### Backend Specification

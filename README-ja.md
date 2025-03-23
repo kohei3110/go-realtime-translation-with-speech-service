@@ -80,7 +80,7 @@ cd backend  # もし既にbackendディレクトリにいない場合
 
 2. APIサーバーの起動
 ```bash
-go run cmd/api/main.go
+go run main.go
 ```
 
 サーバーが正常に起動すると、以下のようなメッセージが表示されます：
@@ -91,6 +91,143 @@ Server is running on port 8080
 ## APIの終了方法
 
 サーバーを終了するには、ターミナルで `Ctrl+C` を押してください。グレースフルシャットダウンが実行されます。
+
+## Web APIの使い方
+
+APIは以下のエンドポイントを提供しており、REST APIとストリーミング翻訳の両方の機能があります：
+
+### ヘルスチェックAPI
+- **エンドポイント**: `GET /api/v1/health`
+- **説明**: APIサーバーが実行中かどうかを確認します
+- **使用例**:
+  ```bash
+  curl http://localhost:8080/api/v1/health
+  ```
+- **レスポンス**:
+  ```json
+  {
+    "status": "ok"
+  }
+  ```
+
+### テキスト翻訳API
+- **エンドポイント**: `POST /api/v1/translate`
+- **説明**: テキストをある言語から別の言語に翻訳します
+- **リクエストボディ**:
+  ```json
+  {
+    "text": "こんにちは",
+    "targetLanguage": "en", 
+    "sourceLanguage": "ja"  // オプション：指定しない場合は自動検出されます
+  }
+  ```
+- **使用例**:
+  ```bash
+  curl -X POST http://localhost:8080/api/v1/translate \
+    -H "Content-Type: application/json" \
+    -d '{"text": "こんにちは", "targetLanguage": "en"}'
+  ```
+- **レスポンス**:
+  ```json
+  {
+    "originalText": "こんにちは",
+    "translatedText": "Hello",
+    "sourceLanguage": "ja",
+    "targetLanguage": "en",
+    "confidence": 0.98
+  }
+  ```
+
+### ストリーミング翻訳API
+
+#### 1. ストリーミングセッション開始
+- **エンドポイント**: `POST /api/v1/streaming/start`
+- **説明**: 新しいストリーミング翻訳セッションを開始します
+- **リクエストボディ**:
+  ```json
+  {
+    "sourceLanguage": "ja",
+    "targetLanguage": "en",
+    "audioFormat": "wav"
+  }
+  ```
+- **使用例**:
+  ```bash
+  curl -X POST http://localhost:8080/api/v1/streaming/start \
+    -H "Content-Type: application/json" \
+    -d '{"sourceLanguage": "ja", "targetLanguage": "en", "audioFormat": "wav"}'
+  ```
+- **レスポンス**:
+  ```json
+  {
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
+  ```
+
+#### 2. 音声チャンク処理
+- **エンドポイント**: `POST /api/v1/streaming/process`
+- **説明**: アクティブなセッションで翻訳のための音声チャンクを処理します
+- **リクエストボディ**:
+  ```json
+  {
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "audioChunk": "base64エンコードされた音声データ"
+  }
+  ```
+- **使用例**:
+  ```bash
+  curl -X POST http://localhost:8080/api/v1/streaming/process \
+    -H "Content-Type: application/json" \
+    -d '{"sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "audioChunk": "base64エンコードされた音声データ"}'
+  ```
+- **レスポンス**:
+  ```json
+  [
+    {
+      "sourceLanguage": "ja",
+      "targetLanguage": "en",
+      "translatedText": "こんにちは、お元気ですか？",
+      "isFinal": false,
+      "segmentId": "segment-123"
+    }
+  ]
+  ```
+
+#### 3. ストリーミングセッション終了
+- **エンドポイント**: `POST /api/v1/streaming/close`
+- **説明**: アクティブなストリーミング翻訳セッションを終了します
+- **リクエストボディ**:
+  ```json
+  {
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
+  ```
+- **使用例**:
+  ```bash
+  curl -X POST http://localhost:8080/api/v1/streaming/close \
+    -H "Content-Type: application/json" \
+    -d '{"sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}'
+  ```
+- **レスポンス**:
+  ```json
+  {
+    "status": "セッションを終了しました"
+  }
+  ```
+
+### エラーレスポンス
+すべてのAPIエンドポイントは適切なHTTPステータスコードを返します：
+- `400 Bad Request`: 無効な入力パラメータ
+- `401 Unauthorized`: 認証失敗
+- `404 Not Found`: リソースが見つからない
+- `500 Internal Server Error`: サーバー側のエラー
+
+エラーレスポンスはJSON形式でフォーマットされます：
+```json
+{
+  "error": "エラーメッセージの詳細"
+}
+```
 
 ## 仕様書
 
