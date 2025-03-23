@@ -197,7 +197,7 @@ cp .env.example .env
 
 ### 必要条件
 
-- Go 1.16以上
+- Go 1.24以上
 - Azure サブスクリプション
 - Azure Translator リソース
 
