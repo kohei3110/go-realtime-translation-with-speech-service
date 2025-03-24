@@ -32,17 +32,10 @@ func main() {
 	speechRegion := os.Getenv("SPEECH_SERVICE_REGION")
 
 	if speechKey == "" || speechRegion == "" {
-		log.Printf("警告: Speech Serviceの認証情報が設定されていません。リアルタイム音声認識機能は利用できません。")
-		log.Printf("SPEECH_SERVICE_KEYとSPEECH_SERVICE_REGIONの環境変数を設定してください。")
-
-		// 開発用にダミー値をセット（本番環境ではこれを削除してください）
-		if speechKey == "" {
-			speechKey = "dummy_key"
-		}
-		if speechRegion == "" {
-			speechRegion = "eastus"
-		}
+		log.Fatalf("エラー: Speech Serviceの認証情報が設定されていません。SPEECH_SERVICE_KEYとSPEECH_SERVICE_REGIONの環境変数を設定してください。")
 	}
+
+	log.Printf("Speech Service設定: Region=%s", speechRegion)
 
 	// ハンドラーに翻訳クライアントをセット
 	handlers.SetTranslatorClient(client)

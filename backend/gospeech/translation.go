@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -779,27 +781,45 @@ type speechServiceConnection struct {
 
 // connectToSpeechService はAzure Speech ServiceのWebSocket APIに接続します
 func (r *TranslationRecognizer) connectToSpeechService() (*speechServiceConnection, error) {
+	log.Printf("Speech Serviceへの接続開始: region=%s", r.config.GetRegion())
+
 	dialer := websocket.Dialer{
 		EnableCompression: true,
 	}
 
 	// ヘッダーの準備
 	header := http.Header{}
-	header.Add("Authorization", "Bearer "+r.config.GetAuthorizationToken())
+	authToken := r.config.GetAuthorizationToken()
+	if authToken == "" {
+		authToken = r.config.GetSubscriptionKey()
+	}
+
+	if authToken == "" {
+		return nil, fmt.Errorf("認証情報が設定されていません")
+	}
+
+	header.Add("Authorization", "Bearer "+authToken)
+	header.Add("Ocp-Apim-Subscription-Key", os.Getenv("SPEECH_SERVICE_KEY"))
 	header.Add("X-ConnectionId", uuid.New().String())
 
 	// WebSocket URLの構築
 	wsURL := fmt.Sprintf("wss://%s.stt.speech.microsoft.com/speech/universal/v2", r.config.GetRegion())
+	log.Printf("Speech Service WebSocket URL: %s", wsURL)
 
 	// WebSocket接続の確立
-	conn, _, err := dialer.Dial(wsURL, header)
+	log.Printf("WebSocket接続を試行中...")
+	conn, resp, err := dialer.Dial(wsURL, header)
 	if err != nil {
+		if resp != nil {
+			log.Printf("接続エラー - Status: %d, Headers: %v", resp.StatusCode, resp.Header)
+		}
 		return nil, fmt.Errorf("failed to connect to Speech Service: %v", err)
 	}
+	log.Printf("Speech ServiceのWebSocket接続が確立されました")
 
 	return &speechServiceConnection{
 		conn:           conn,
-		authToken:      r.config.GetAuthorizationToken(),
+		authToken:      authToken,
 		region:         r.config.GetRegion(),
 		languages:      r.GetTargetLanguages(),
 		sourceLanguage: r.config.GetSpeechRecognitionLanguage(),

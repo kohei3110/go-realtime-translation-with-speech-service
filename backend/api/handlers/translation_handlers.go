@@ -223,6 +223,7 @@ func ProcessAudioChunkHandler(c *gin.Context) {
 // WebSocketHandler はWebSocket接続を処理するハンドラー
 func WebSocketHandler(c *gin.Context) {
 	sessionID := c.Param("sessionId")
+	log.Printf("WebSocket接続開始: sessionID=%s", sessionID)
 
 	// WebSocketにアップグレード
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -235,20 +236,24 @@ func WebSocketHandler(c *gin.Context) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Speech Translation設定
+	log.Printf("Speech Translation設定の作成開始: key=%s, region=%s", speechSubscriptionKey[:5]+"...", speechRegion)
 	translationConfig, err := gospeech.SpeechTranslationConfigFromSubscription(speechSubscriptionKey, speechRegion)
 	if err != nil {
 		log.Printf("Speech Translation設定の作成に失敗しました: %v", err)
 		conn.Close()
 		return
 	}
+	log.Printf("Speech Translation設定の作成完了")
 
 	// オーディオ設定（デフォルトマイク）
+	log.Printf("オーディオ設定の作成開始")
 	audioConfig, err := gospeech.NewAudioConfigFromDefaultMicrophone()
 	if err != nil {
 		log.Printf("オーディオ設定の作成に失敗しました: %v", err)
 		conn.Close()
 		return
 	}
+	log.Printf("オーディオ設定の作成完了")
 
 	// クライアントからの初期設定メッセージを待機
 	var setupMsg StreamingTranslationRequest
@@ -257,20 +262,25 @@ func WebSocketHandler(c *gin.Context) {
 		conn.Close()
 		return
 	}
+	log.Printf("クライアントから初期設定を受信: sourceLanguage=%s, targetLanguage=%s", setupMsg.SourceLanguage, setupMsg.TargetLanguage)
 
 	// 認識する言語の設定
+	log.Printf("音声認識言語の設定: %s", setupMsg.SourceLanguage)
 	translationConfig.SetSpeechRecognitionLanguage(setupMsg.SourceLanguage)
 
 	// 翻訳先言語の追加
+	log.Printf("翻訳先言語の追加: %s", setupMsg.TargetLanguage)
 	translationConfig.AddTargetLanguage(setupMsg.TargetLanguage)
 
 	// 音声認識器の作成
+	log.Printf("TranslationRecognizerの作成開始")
 	recognizer, err := gospeech.NewTranslationRecognizer(translationConfig, audioConfig)
 	if err != nil {
 		log.Printf("音声認識器の作成に失敗しました: %v", err)
 		conn.Close()
 		return
 	}
+	log.Printf("TranslationRecognizerの作成完了")
 
 	// セッション情報を保存
 	session := &StreamingSession{
@@ -362,12 +372,14 @@ func WebSocketHandler(c *gin.Context) {
 	})
 
 	// 連続認識を開始
+	log.Printf("連続認識の開始")
 	if err := recognizer.StartContinuousRecognition(ctx); err != nil {
 		log.Printf("連続認識の開始に失敗しました: %v", err)
 		conn.WriteJSON(gin.H{"error": "連続認識の開始に失敗しました"})
 		conn.Close()
 		return
 	}
+	log.Printf("連続認識を開始しました")
 
 	// WebSocketのクローズを監視
 	go func() {
