@@ -96,7 +96,7 @@ export const RealtimeTranslation: React.FC = () => {
           <div className="translations-list">
             {translations.map((translation, index) => (
               <div
-                key={index}
+                key={`${translation.segmentId}-${index}`}
                 className={`translation-item ${translation.isFinal ? 'final' : 'interim'}`}
               >
                 <div className="translation-text">{translation.translatedText}</div>

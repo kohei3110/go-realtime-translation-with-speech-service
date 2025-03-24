@@ -290,12 +290,14 @@ func WebSocketHandler(c *gin.Context) {
 	activeSessionsMutex.Unlock()
 
 	// クライアントに準備完了を通知
+	log.Printf("クライアントに準備完了を通知: sessionID=%s", sessionID)
 	conn.WriteJSON(gin.H{"status": "ready", "sessionId": sessionID})
 
 	// 認識結果のイベントハンドラーの設定
 	recognizer.Recognized().Connect(func(eventArgs interface{}) {
 		args, ok := eventArgs.(*gospeech.TranslationRecognitionEventArgs)
 		if !ok {
+			log.Printf("認識結果のイベント引数の型が不正: %T", eventArgs)
 			return
 		}
 
@@ -304,7 +306,7 @@ func WebSocketHandler(c *gin.Context) {
 			// 翻訳結果を取得
 			translatedText, exists := result.Translations[setupMsg.TargetLanguage]
 			if !exists {
-				log.Printf("指定された言語の翻訳結果がありません: %s", setupMsg.TargetLanguage)
+				log.Printf("指定された言語の翻訳結果がありません: targetLanguage=%s", setupMsg.TargetLanguage)
 				return
 			}
 
@@ -318,6 +320,7 @@ func WebSocketHandler(c *gin.Context) {
 				SegmentID:      uuid.New().String(),
 			}
 
+			log.Printf("最終翻訳結果を送信: %+v", response)
 			if err := conn.WriteJSON(response); err != nil {
 				log.Printf("WebSocketへの書き込みに失敗しました: %v", err)
 			}
@@ -328,6 +331,7 @@ func WebSocketHandler(c *gin.Context) {
 	recognizer.Recognizing().Connect(func(eventArgs interface{}) {
 		args, ok := eventArgs.(*gospeech.TranslationRecognitionEventArgs)
 		if !ok {
+			log.Printf("認識中イベント引数の型が不正: %T", eventArgs)
 			return
 		}
 
@@ -336,6 +340,7 @@ func WebSocketHandler(c *gin.Context) {
 			// 翻訳結果を取得
 			translatedText, exists := result.Translations[setupMsg.TargetLanguage]
 			if !exists {
+				log.Printf("指定された言語の暫定翻訳結果がありません: targetLanguage=%s", setupMsg.TargetLanguage)
 				return
 			}
 
@@ -349,6 +354,7 @@ func WebSocketHandler(c *gin.Context) {
 				SegmentID:      uuid.New().String(),
 			}
 
+			log.Printf("暫定翻訳結果を送信: %+v", response)
 			if err := conn.WriteJSON(response); err != nil {
 				log.Printf("WebSocketへの書き込みに失敗しました: %v", err)
 			}

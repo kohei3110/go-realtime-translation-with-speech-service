@@ -19,30 +19,44 @@ export const useTranslation = () => {
     const ws = new WebSocket(`ws://localhost:8080/api/v1/streaming/ws/${Date.now()}`);
 
     ws.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('WebSocket connected, sending initial setup message');
       // 初期設定を送信
-      ws.send(JSON.stringify({
+      const setupMsg = {
         sourceLanguage,
         targetLanguage,
         audioFormat: 'audio/wav',
-      }));
+      };
+      console.log('Sending setup message:', setupMsg);
+      ws.send(JSON.stringify(setupMsg));
     };
 
     ws.onmessage = (event) => {
+      console.log('Received WebSocket message:', event.data);
       const data = JSON.parse(event.data);
       if (data.status === 'ready') {
         console.log('WebSocket ready for streaming');
-      } else {
+      } else if (data.translatedText) {
+        console.log('Received translation result:', data);
         setTranslations(prev => {
+          const newTranslation: StreamingTranslationResponse = {
+            sourceLanguage: data.sourceLanguage,
+            targetLanguage: data.targetLanguage,
+            translatedText: data.translatedText,
+            originalText: data.originalText,
+            isFinal: data.isFinal,
+            segmentId: data.segmentId
+          };
+
           if (data.isFinal) {
-            return [...prev, data];
+            console.log('Adding final translation result');
+            return [...prev, newTranslation];
           } else {
+            console.log('Updating interim translation result');
             const updatedTranslations = [...prev];
-            // 最後の要素が暫定結果なら更新
             if (updatedTranslations.length > 0 && !updatedTranslations[updatedTranslations.length - 1].isFinal) {
-              updatedTranslations[updatedTranslations.length - 1] = data;
+              updatedTranslations[updatedTranslations.length - 1] = newTranslation;
             } else {
-              updatedTranslations.push(data);
+              updatedTranslations.push(newTranslation);
             }
             return updatedTranslations;
           }
@@ -56,7 +70,7 @@ export const useTranslation = () => {
     };
 
     ws.onclose = () => {
-      console.log('WebSocket closed');
+      console.log('WebSocket connection closed');
       wsRef.current = null;
     };
 
