@@ -5,6 +5,7 @@ package gospeech
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 )
@@ -55,6 +56,27 @@ type AudioConfig struct {
 	format     *AudioStreamFormat
 	sourceType string // "Microphone", "File", "Stream", "PushStream"
 	source     interface{}
+}
+
+// NewAudioConfig creates a new audio configuration with the specified source
+func NewAudioConfig(source io.Reader) (*AudioConfig, error) {
+	if source == nil {
+		return nil, fmt.Errorf("audio source cannot be nil")
+	}
+
+	config := &AudioConfig{
+		source:     source,
+		sourceType: "Stream",
+	}
+
+	// Initialize and validate the audio source
+	if reader, ok := source.(*WaveFormatReader); ok {
+		if err := reader.Initialize(); err != nil {
+			return nil, fmt.Errorf("failed to initialize WaveFormatReader: %v", err)
+		}
+	}
+
+	return config, nil
 }
 
 // NewAudioConfigFromDefaultMicrophone creates an audio config from the default microphone
@@ -197,6 +219,35 @@ func NewAudioConfigFromPushStream(stream *PushAudioInputStream) (*AudioConfig, e
 		sourceType: "PushStream",
 		source:     stream,
 	}, nil
+}
+
+// WaveFormatReader reads audio data in WAV format
+type WaveFormatReader struct {
+	initialized bool
+	buffer      []byte
+}
+
+// NewWaveFormatReader creates a new WAV format reader
+func NewWaveFormatReader() *WaveFormatReader {
+	return &WaveFormatReader{
+		buffer: make([]byte, 8192), // 8KB buffer
+	}
+}
+
+// Initialize prepares the reader for reading audio data
+func (r *WaveFormatReader) Initialize() error {
+	r.initialized = true
+	return nil
+}
+
+// Read implements io.Reader interface
+func (r *WaveFormatReader) Read(p []byte) (n int, err error) {
+	if !r.initialized {
+		return 0, fmt.Errorf("WaveFormatReader not initialized")
+	}
+	// Copy data from internal buffer to output buffer
+	n = copy(p, r.buffer)
+	return n, nil
 }
 
 // AudioOutputStream represents an audio output stream

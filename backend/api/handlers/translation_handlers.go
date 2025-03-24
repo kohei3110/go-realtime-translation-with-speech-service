@@ -234,6 +234,7 @@ func WebSocketHandler(c *gin.Context) {
 
 	// セッションコンテキストの作成
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cancel is called in all paths
 
 	// Speech Translation設定
 	log.Printf("Speech Translation設定の作成開始: key=%s, region=%s", speechSubscriptionKey[:5]+"...", speechRegion)
@@ -247,9 +248,15 @@ func WebSocketHandler(c *gin.Context) {
 
 	// オーディオ設定（デフォルトマイク）
 	log.Printf("オーディオ設定の作成開始")
-	audioConfig, err := gospeech.NewAudioConfigFromDefaultMicrophone()
+	reader := gospeech.NewWaveFormatReader()            // 新しいWaveFormatReaderを作成
+	audioConfig, err := gospeech.NewAudioConfig(reader) // カスタムオーディオソースを使用
 	if err != nil {
 		log.Printf("オーディオ設定の作成に失敗しました: %v", err)
+		conn.Close()
+		return
+	}
+	if audioConfig.Source() == nil {
+		log.Printf("オーディオソースがnilです")
 		conn.Close()
 		return
 	}

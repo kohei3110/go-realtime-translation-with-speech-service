@@ -275,16 +275,26 @@ type TranslationRecognizer struct {
 // NewTranslationRecognizer creates a new translation recognizer
 func NewTranslationRecognizer(translationConfig *SpeechTranslationConfig, audioConfig *AudioConfig) (*TranslationRecognizer, error) {
 	if translationConfig == nil {
-		return nil, errors.New("translation config cannot be nil")
+		return nil, fmt.Errorf("translation config cannot be nil")
 	}
 
 	// Use default audio config (default microphone) if none provided
+	var err error
 	if audioConfig == nil {
-		var err error
 		audioConfig, err = NewAudioConfigFromDefaultMicrophone()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create default microphone config: %v", err)
+			return nil, fmt.Errorf("failed to create default audio config: %v", err)
 		}
+	}
+
+	// Validate audio source
+	if audioConfig.Source() == nil {
+		return nil, fmt.Errorf("audio source cannot be nil")
+	}
+
+	// Validate that the source implements io.Reader
+	if _, ok := audioConfig.Source().(io.Reader); !ok {
+		return nil, fmt.Errorf("audio source must implement io.Reader")
 	}
 
 	recognizer := &TranslationRecognizer{
