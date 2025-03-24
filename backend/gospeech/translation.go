@@ -5,11 +5,18 @@ package gospeech
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
 // SpeechTranslationConfig contains configuration settings for speech translation services
@@ -319,68 +326,78 @@ func NewTranslationRecognizer(translationConfig *SpeechTranslationConfig, audioC
 
 // RecognizeOnce performs a single recognition operation
 func (r *TranslationRecognizer) RecognizeOnce(ctx context.Context) (*TranslationRecognitionResult, error) {
-	// Create a context with timeout if not already done
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
+	if r.config.GetSubscriptionKey() == "" {
+		return nil, errors.New("subscription key is not set")
 	}
 
 	// Signal session start
 	r.raiseSessionStarted()
 
-	// In a real implementation, this would connect to the Speech Service
-	// Here we're simulating basic functionality
+	// WebSocket接続を確立
+	conn, err := r.connectToSpeechService()
+	if err != nil {
+		r.raiseCanceled(&CancellationDetails{
+			Reason:       CancellationReasonError,
+			ErrorCode:    CancellationErrorConnectionFailure,
+			ErrorDetails: fmt.Sprintf("Failed to connect to Speech Service: %v", err),
+		})
+		return nil, err
+	}
+	defer conn.close()
 
 	// Signal speech start detected
 	r.raiseSpeechStartDetected()
 
-	// Simulate processing time
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(1 * time.Second):
-		// Continue processing
-	}
-
-	// Generate a result based on the configured languages
-	result := &TranslationRecognitionResult{
-		ResultID:     "SimulatedResultID",
-		Text:         "Hello, how are you?",
-		Reason:       ResultReasonTranslatedSpeech,
-		Offset:       0,
-		Duration:     1 * time.Second,
-		Translations: make(map[string]string),
-	}
-
-	// Add a translation for each target language
-	targetLangs := r.config.GetTargetLanguages()
-	for _, lang := range targetLangs {
-		switch lang {
-		case "ja":
-			result.Translations[lang] = "こんにちは、お元気ですか？"
-		case "es":
-			result.Translations[lang] = "Hola, ¿cómo estás?"
-		case "fr":
-			result.Translations[lang] = "Bonjour, comment allez-vous?"
-		case "de":
-			result.Translations[lang] = "Hallo, wie geht es Ihnen?"
-		default:
-			result.Translations[lang] = "Hello, how are you?"
+	// オーディオデータの読み取り
+	buffer := make([]byte, 8192)
+	n, err := r.audioConfig.Source().(io.Reader).Read(buffer)
+	if err != nil {
+		if err != io.EOF {
+			r.raiseCanceled(&CancellationDetails{
+				Reason:       CancellationReasonError,
+				ErrorCode:    CancellationErrorConnectionFailure,
+				ErrorDetails: fmt.Sprintf("Error reading audio data: %v", err),
+			})
+			return nil, err
 		}
 	}
 
-	// Signal speech end detected
-	r.raiseSpeechEndDetected()
+	if n > 0 {
+		// オーディオデータの送信
+		if err := conn.sendAudioData(buffer[:n]); err != nil {
+			r.raiseCanceled(&CancellationDetails{
+				Reason:       CancellationReasonError,
+				ErrorCode:    CancellationErrorConnectionFailure,
+				ErrorDetails: fmt.Sprintf("Error sending audio data: %v", err),
+			})
+			return nil, err
+		}
 
-	// Signal the appropriate events
-	r.raiseRecognizing(result)
-	r.raiseRecognized(result)
+		// 結果の受信
+		result, err := conn.receiveResults()
+		if err != nil {
+			r.raiseCanceled(&CancellationDetails{
+				Reason:       CancellationReasonError,
+				ErrorCode:    CancellationErrorConnectionFailure,
+				ErrorDetails: fmt.Sprintf("Error receiving results: %v", err),
+			})
+			return nil, err
+		}
 
-	// Signal session stop
-	r.raiseSessionStopped()
+		// Signal speech end detected
+		r.raiseSpeechEndDetected()
 
-	return result, nil
+		// Signal the appropriate events
+		r.raiseRecognizing(result)
+		r.raiseRecognized(result)
+
+		// Signal session stop
+		r.raiseSessionStopped()
+
+		return result, nil
+	}
+
+	return nil, errors.New("no audio data available")
 }
 
 // StartContinuousRecognitionAsync starts continuous recognition
@@ -420,6 +437,59 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 	// Signal session start
 	r.raiseSessionStarted()
 
+	// WebSocket接続を確立
+	conn, err := r.connectToSpeechService()
+	if err != nil {
+		r.raiseCanceled(&CancellationDetails{
+			Reason:       CancellationReasonError,
+			ErrorCode:    CancellationErrorConnectionFailure,
+			ErrorDetails: fmt.Sprintf("Failed to connect to Speech Service: %v", err),
+		})
+		return
+	}
+	defer conn.close()
+
+	// Audio source setup
+	var audioSource io.Reader
+	switch r.audioConfig.SourceType() {
+	case "Microphone":
+		audioSource = r.audioConfig.Source().(io.Reader)
+	case "Stream":
+		audioSource = r.audioConfig.Source().(io.Reader)
+	case "File":
+		audioSource = r.audioConfig.Source().(io.Reader)
+	default:
+		r.raiseCanceled(&CancellationDetails{
+			Reason:       CancellationReasonError,
+			ErrorCode:    CancellationErrorConnectionFailure,
+			ErrorDetails: "Unsupported audio source type",
+		})
+		return
+	}
+
+	// オーディオデータを読み込むバッファ
+	buffer := make([]byte, 8192) // 8KBのバッファ
+
+	// エラー処理用のチャネル
+	errCh := make(chan error, 1)
+
+	// 結果受信用のゴルーチン
+	go func() {
+		for {
+			result, err := conn.receiveResults()
+			if err != nil {
+				errCh <- err
+				return
+			}
+
+			if result != nil {
+				// イベントを発火
+				r.raiseRecognizing(result)
+				r.raiseRecognized(result)
+			}
+		}
+	}()
+
 	// Continuous recognition loop
 	for {
 		select {
@@ -431,40 +501,46 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 			// Context canceled or timed out
 			r.raiseSessionStopped()
 			return
+		case err := <-errCh:
+			// エラーが発生した場合
+			r.raiseCanceled(&CancellationDetails{
+				Reason:       CancellationReasonError,
+				ErrorCode:    CancellationErrorConnectionFailure,
+				ErrorDetails: fmt.Sprintf("Error in continuous recognition: %v", err),
+			})
+			return
 		default:
-			// Perform recognition
-			result := &TranslationRecognitionResult{
-				ResultID:     fmt.Sprintf("ContinuousResult_%d", time.Now().UnixNano()),
-				Text:         "This is a continuous recognition result.",
-				Reason:       ResultReasonTranslatedSpeech,
-				Offset:       time.Now().UnixNano(),
-				Duration:     500 * time.Millisecond,
-				Translations: make(map[string]string),
+			// オーディオデータの読み込み
+			n, err := audioSource.Read(buffer)
+			if err != nil {
+				if err == io.EOF {
+					// ファイル終端に達した場合
+					r.raiseSessionStopped()
+					return
+				}
+				// その他のエラー
+				r.raiseCanceled(&CancellationDetails{
+					Reason:       CancellationReasonError,
+					ErrorCode:    CancellationErrorConnectionFailure,
+					ErrorDetails: fmt.Sprintf("Error reading audio data: %v", err),
+				})
+				return
 			}
 
-			// Add a translation for each target language
-			targetLangs := r.config.GetTargetLanguages()
-			for _, lang := range targetLangs {
-				switch lang {
-				case "ja":
-					result.Translations[lang] = "これは継続的な認識結果です。"
-				case "es":
-					result.Translations[lang] = "Este es un resultado de reconocimiento continuo."
-				case "fr":
-					result.Translations[lang] = "C'est un résultat de reconnaissance continue."
-				case "de":
-					result.Translations[lang] = "Dies ist ein kontinuierliches Erkennungsergebnis."
-				default:
-					result.Translations[lang] = "This is a continuous recognition result."
+			if n > 0 {
+				// オーディオデータの送信
+				if err := conn.sendAudioData(buffer[:n]); err != nil {
+					r.raiseCanceled(&CancellationDetails{
+						Reason:       CancellationReasonError,
+						ErrorCode:    CancellationErrorConnectionFailure,
+						ErrorDetails: fmt.Sprintf("Error sending audio data: %v", err),
+					})
+					return
 				}
 			}
 
-			// Signal recognizing and recognized events
-			r.raiseRecognizing(result)
-			r.raiseRecognized(result)
-
-			// Simulate processing time
-			time.Sleep(2 * time.Second)
+			// 短い遅延を入れて CPU 使用率を抑える
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }
@@ -690,4 +766,96 @@ func (r *TranslationRecognizer) Close() error {
 	}
 
 	return nil
+}
+
+// speechServiceConnection はAzure Speech ServiceのWebSocket接続を管理します
+type speechServiceConnection struct {
+	conn           *websocket.Conn
+	authToken      string
+	region         string
+	languages      []string
+	sourceLanguage string
+}
+
+// connectToSpeechService はAzure Speech ServiceのWebSocket APIに接続します
+func (r *TranslationRecognizer) connectToSpeechService() (*speechServiceConnection, error) {
+	dialer := websocket.Dialer{
+		EnableCompression: true,
+	}
+
+	// ヘッダーの準備
+	header := http.Header{}
+	header.Add("Authorization", "Bearer "+r.config.GetAuthorizationToken())
+	header.Add("X-ConnectionId", uuid.New().String())
+
+	// WebSocket URLの構築
+	wsURL := fmt.Sprintf("wss://%s.stt.speech.microsoft.com/speech/universal/v2", r.config.GetRegion())
+
+	// WebSocket接続の確立
+	conn, _, err := dialer.Dial(wsURL, header)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Speech Service: %v", err)
+	}
+
+	return &speechServiceConnection{
+		conn:           conn,
+		authToken:      r.config.GetAuthorizationToken(),
+		region:         r.config.GetRegion(),
+		languages:      r.GetTargetLanguages(),
+		sourceLanguage: r.config.GetSpeechRecognitionLanguage(),
+	}, nil
+}
+
+// sendAudioData はオーディオデータをWebSocket経由で送信します
+func (sc *speechServiceConnection) sendAudioData(data []byte) error {
+	// Speech ServiceのWebSocket APIで必要なヘッダー情報を含むメッセージを作成
+	message := map[string]interface{}{
+		"audio": map[string]interface{}{
+			"data": base64.StdEncoding.EncodeToString(data),
+		},
+		"context": map[string]interface{}{
+			"sourceLanguage":  sc.sourceLanguage,
+			"targetLanguages": sc.languages,
+		},
+	}
+
+	return sc.conn.WriteJSON(message)
+}
+
+// receiveResults は認識結果を受信します
+func (sc *speechServiceConnection) receiveResults() (*TranslationRecognitionResult, error) {
+	_, message, err := sc.conn.ReadMessage()
+	if err != nil {
+		return nil, err
+	}
+
+	// メッセージをパースして結果を生成
+	var response map[string]interface{}
+	if err := json.Unmarshal(message, &response); err != nil {
+		return nil, err
+	}
+
+	// レスポンスから認識結果を構築
+	result := &TranslationRecognitionResult{
+		ResultID:     fmt.Sprintf("result_%d", time.Now().UnixNano()),
+		Text:         response["recognizedText"].(string),
+		Reason:       ResultReasonTranslatedSpeech,
+		Offset:       time.Now().UnixNano(),
+		Duration:     1 * time.Second,
+		Translations: make(map[string]string),
+	}
+
+	// 翻訳結果があれば追加
+	if translations, ok := response["translations"].(map[string]interface{}); ok {
+		for lang, text := range translations {
+			result.Translations[lang] = text.(string)
+		}
+	}
+
+	return result, nil
+}
+
+// close はWebSocket接続を閉じます
+func (sc *speechServiceConnection) close() error {
+	return sc.conn.Close()
 }

@@ -1,24 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import './RealtimeTranslation.css';
+import { useTranslation } from '../../hooks/useTranslation';
 
-// リアルタイム音声認識・翻訳コンポーネント
 export const RealtimeTranslation: React.FC = () => {
-  // 状態管理
-  const [isActive, setIsActive] = useState<boolean>(false);
-  const [sourceLanguage, setSourceLanguage] = useState<string>('en-US');
-  const [targetLanguage, setTargetLanguage] = useState<string>('ja');
-  const [sessionId, setSessionId] = useState<string>('');
-  const [translations, setTranslations] = useState<Array<{ text: string; isFinal: boolean; original: string }>>([]);
-  const [status, setStatus] = useState<string>('待機中');
-  const [error, setError] = useState<string>('');
-
-  // WebSocketの参照
-  const wsRef = useRef<WebSocket | null>(null);
+  const [sourceLanguage, setSourceLanguage] = useState<string>('ja-JP');
+  const [targetLanguage, setTargetLanguage] = useState<string>('en');
+  const { isRecording, translations, error, startRecording, stopRecording } = useTranslation();
 
   // 言語オプション
   const languageOptions = [
-    { value: 'en-US', label: '英語' },
     { value: 'ja-JP', label: '日本語' },
+    { value: 'en-US', label: '英語' },
     { value: 'es-ES', label: 'スペイン語' },
     { value: 'fr-FR', label: 'フランス語' },
     { value: 'de-DE', label: 'ドイツ語' },
@@ -34,149 +26,13 @@ export const RealtimeTranslation: React.FC = () => {
     { value: 'zh-Hans', label: '中国語 (簡体字)' },
   ];
 
-  // WebSocketのセットアップ
-  const setupWebSocket = (url: string) => {
-    const ws = new WebSocket(`ws://localhost:8080${url}`);
-
-    ws.onopen = () => {
-      console.log('WebSocket接続が開きました');
-      setStatus('接続しました - 初期化中...');
-
-      // 初期設定を送信
-      ws.send(JSON.stringify({
-        sourceLanguage: sourceLanguage,
-        targetLanguage: targetLanguage,
-        audioFormat: 'audio/wav',
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.status === 'ready') {
-        setStatus('認識中 - お話しください...');
-      } else if (data.translatedText) {
-        setTranslations(prev => {
-          // 途中結果の場合は最後のアイテムを更新、確定結果の場合は新しいアイテムを追加
-          if (data.isFinal) {
-            return [...prev.filter(t => t.isFinal), { 
-              text: data.translatedText, 
-              isFinal: true,
-              original: data.originalText || ''
-            }];
-          } else {
-            const updatedTranslations = [...prev];
-            // 最後のアイテムが途中結果なら更新、そうでなければ新しい途中結果を追加
-            if (updatedTranslations.length > 0 && !updatedTranslations[updatedTranslations.length - 1].isFinal) {
-              updatedTranslations[updatedTranslations.length - 1] = { 
-                text: data.translatedText, 
-                isFinal: false,
-                original: data.originalText || ''
-              };
-            } else {
-              updatedTranslations.push({ 
-                text: data.translatedText, 
-                isFinal: false,
-                original: data.originalText || ''
-              });
-            }
-            return updatedTranslations;
-          }
-        });
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocketエラー:', error);
-      setError('WebSocket接続でエラーが発生しました');
-      setStatus('エラー');
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket接続が閉じられました');
-      setStatus('接続終了');
-      wsRef.current = null;
-      setIsActive(false);
-    };
-
-    wsRef.current = ws;
+  const handleStartTranslation = async () => {
+    await startRecording(sourceLanguage, targetLanguage);
   };
 
-  // 翻訳セッションの開始
-  const startTranslation = async () => {
-    try {
-      setError('');
-      setStatus('セッション開始中...');
-
-      const response = await fetch('http://localhost:8080/api/v1/streaming/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sourceLanguage,
-          targetLanguage,
-          audioFormat: 'audio/wav',
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setSessionId(data.sessionId);
-      setIsActive(true);
-      setTranslations([]);
-
-      // WebSocketに接続
-      setupWebSocket(data.webSocketURL);
-    } catch (err: any) {
-      console.error('Error starting translation:', err);
-      setError(`翻訳セッションの開始に失敗しました: ${err.message}`);
-      setStatus('エラー');
-    }
+  const handleStopTranslation = async () => {
+    await stopRecording();
   };
-
-  // 翻訳セッションの停止
-  const stopTranslation = async () => {
-    try {
-      setStatus('セッション終了中...');
-
-      // WebSocket接続を閉じる
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-
-      // APIを呼び出してセッションをクリーンアップ
-      if (sessionId) {
-        await fetch('http://localhost:8080/api/v1/streaming/close', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            sessionId,
-          }),
-        });
-      }
-
-      setIsActive(false);
-      setStatus('待機中');
-    } catch (err: any) {
-      console.error('Error stopping translation:', err);
-      setError(`翻訳セッションの停止に失敗しました: ${err.message}`);
-    }
-  };
-
-  // コンポーネントのクリーンアップ
-  useEffect(() => {
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, []);
 
   return (
     <div className="realtime-translation-container">
@@ -189,7 +45,7 @@ export const RealtimeTranslation: React.FC = () => {
             <select
               value={sourceLanguage}
               onChange={(e) => setSourceLanguage(e.target.value)}
-              disabled={isActive}
+              disabled={isRecording}
             >
               {languageOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -204,7 +60,7 @@ export const RealtimeTranslation: React.FC = () => {
             <select
               value={targetLanguage}
               onChange={(e) => setTargetLanguage(e.target.value)}
-              disabled={isActive}
+              disabled={isRecording}
             >
               {targetLanguageOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -216,12 +72,12 @@ export const RealtimeTranslation: React.FC = () => {
         </div>
         
         <div className="action-buttons">
-          {!isActive ? (
-            <button onClick={startTranslation} className="start-button">
+          {!isRecording ? (
+            <button onClick={handleStartTranslation} className="start-button">
               翻訳開始
             </button>
           ) : (
-            <button onClick={stopTranslation} className="stop-button">
+            <button onClick={handleStopTranslation} className="stop-button">
               翻訳停止
             </button>
           )}
@@ -229,8 +85,8 @@ export const RealtimeTranslation: React.FC = () => {
       </div>
       
       <div className="status-bar">
-        <span className={`status-indicator ${isActive ? 'active' : ''}`}></span>
-        <span className="status-text">{status}</span>
+        <span className={`status-indicator ${isRecording ? 'active' : ''}`}></span>
+        <span className="status-text">{isRecording ? '認識中' : '待機中'}</span>
       </div>
       
       {error && <div className="error-message">{error}</div>}
@@ -243,16 +99,16 @@ export const RealtimeTranslation: React.FC = () => {
                 key={index}
                 className={`translation-item ${translation.isFinal ? 'final' : 'interim'}`}
               >
-                <div className="translation-text">{translation.text}</div>
-                {translation.original && (
-                  <div className="original-text">{translation.original}</div>
+                <div className="translation-text">{translation.translatedText}</div>
+                {translation.originalText && (
+                  <div className="original-text">{translation.originalText}</div>
                 )}
               </div>
             ))}
           </div>
         ) : (
           <div className="no-translations">
-            {isActive ? 'お話しください...' : '翻訳を開始するには「翻訳開始」ボタンをクリックしてください'}
+            {isRecording ? 'お話しください...' : '翻訳を開始するには「翻訳開始」ボタンをクリックしてください'}
           </div>
         )}
       </div>
