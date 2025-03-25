@@ -416,20 +416,20 @@ func (r *TranslationRecognizer) StartContinuousRecognitionAsync(ctx context.Cont
 	r.continuousMutex.Lock()
 	defer r.continuousMutex.Unlock()
 
-	log.Printf("[DEBUG] StartContinuousRecognitionAsync が呼び出されました")
+	log.Printf("[DEBUG] StartContinuousRecognitionAsync called")
 
 	if r.continuousRunning {
-		log.Printf("[DEBUG] 連続認識が既に実行中です")
+		log.Printf("[DEBUG] Continuous recognition is already running")
 		return errors.New("continuous recognition is already running")
 	}
 
 	r.continuousRunning = true
 	r.stopCh = make(chan struct{})
 
-	log.Printf("[DEBUG] continuousRecognitionWorker を起動します")
+	log.Printf("[DEBUG] Launching continuousRecognitionWorker")
 	go r.continuousRecognitionWorker(ctx)
 
-	log.Printf("[DEBUG] StartContinuousRecognitionAsync が正常に完了しました")
+	log.Printf("[DEBUG] StartContinuousRecognitionAsync completed successfully")
 	return nil
 }
 
@@ -450,16 +450,16 @@ func (r *TranslationRecognizer) StopContinuousRecognitionAsync() error {
 
 // continuousRecognitionWorker handles the continuous recognition process
 func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context) {
-	log.Printf("[DEBUG] continuousRecognitionWorker が開始されました")
+	log.Printf("[DEBUG] continuousRecognitionWorker started")
 
 	// Signal session start
 	r.raiseSessionStarted()
 
 	// WebSocket接続を確立
-	log.Printf("[DEBUG] Speech Serviceへの接続を試みています")
+	log.Printf("[DEBUG] Attempting to connect to Speech Service")
 	conn, err := r.connectToSpeechService()
 	if err != nil {
-		log.Printf("[ERROR] Speech Serviceへの接続に失敗しました: %v", err)
+		log.Printf("[ERROR] Failed to connect to Speech Service: %v", err)
 		r.raiseCanceled(&CancellationDetails{
 			Reason:       CancellationReasonError,
 			ErrorCode:    CancellationErrorConnectionFailure,
@@ -468,27 +468,27 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 		return
 	}
 	defer conn.close()
-	log.Printf("[DEBUG] Speech Serviceへの接続が確立されました: sourceLanguage=%s, targetLanguages=%v",
+	log.Printf("[DEBUG] Connection to Speech Service established: sourceLanguage=%s, targetLanguages=%v",
 		r.config.GetSpeechRecognitionLanguage(), r.GetTargetLanguages())
 
 	// Audio source setup
-	log.Printf("[DEBUG] オーディオソースの設定: SourceType=%s", r.audioConfig.SourceType())
+	log.Printf("[DEBUG] Audio source configuration: SourceType=%s", r.audioConfig.SourceType())
 	var audioSource io.Reader
 	switch r.audioConfig.SourceType() {
 	case "Microphone":
 		audioSource = r.audioConfig.Source().(io.Reader)
-		log.Printf("[DEBUG] マイク入力をオーディオソースとして設定しました")
+		log.Printf("[DEBUG] Microphone input set as audio source")
 	case "Stream":
 		audioSource = r.audioConfig.Source().(io.Reader)
-		log.Printf("[DEBUG] ストリームをオーディオソースとして設定しました")
+		log.Printf("[DEBUG] Stream set as audio source")
 	case "File":
 		audioSource = r.audioConfig.Source().(io.Reader)
-		log.Printf("[DEBUG] ファイルをオーディオソースとして設定しました")
+		log.Printf("[DEBUG] File set as audio source")
 	case "PushStream":
 		audioSource = r.audioConfig.Source().(io.Reader)
-		log.Printf("[DEBUG] PushStreamをオーディオソースとして設定しました: %T", r.audioConfig.Source())
+		log.Printf("[DEBUG] PushStream set as audio source: %T", r.audioConfig.Source())
 	default:
-		log.Printf("[ERROR] サポートされていないオーディオソースタイプ: %s", r.audioConfig.SourceType())
+		log.Printf("[ERROR] Unsupported audio source type: %s", r.audioConfig.SourceType())
 		r.raiseCanceled(&CancellationDetails{
 			Reason:       CancellationReasonError,
 			ErrorCode:    CancellationErrorConnectionFailure,
@@ -499,12 +499,12 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 
 	// オーディオデータを読み込むバッファ
 	buffer := make([]byte, 8192) // 8KBのバッファ
-	log.Printf("[DEBUG] 8KBのオーディオバッファを作成しました")
+	log.Printf("[DEBUG] Created 8KB audio buffer")
 
 	// 音声レベルのログ出力用の変数
 	lastLogTime := time.Now()
 	logInterval := 500 * time.Millisecond // 500ミリ秒ごとにログを出力
-	log.Printf("[DEBUG] 音声レベルログの間隔を %v に設定しました", logInterval)
+	log.Printf("[DEBUG] Set voice level log interval to %v", logInterval)
 
 	// データ読み取り統計情報
 	var totalBytesRead int
@@ -515,22 +515,22 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 
 	// エラー処理用のチャネル
 	errCh := make(chan error, 1)
-	log.Printf("[DEBUG] エラー処理用チャネルを作成しました")
+	log.Printf("[DEBUG] Created channel for error handling")
 
 	// 結果受信用のゴルーチン
-	log.Printf("[DEBUG] 結果受信用ゴルーチンを開始します")
+	log.Printf("[DEBUG] Starting goroutine for receiving results")
 	go func() {
 		for {
-			log.Printf("[DEBUG] WebSocketから結果を待機中...")
+			log.Printf("[DEBUG] Waiting for results from WebSocket...")
 			result, err := conn.receiveResults()
 			if err != nil {
-				log.Printf("[ERROR] 結果の受信中にエラーが発生: %v", err)
+				log.Printf("[ERROR] Error occurred while receiving results: %v", err)
 				errCh <- err
 				return
 			}
 
 			if result != nil {
-				log.Printf("[DEBUG] 認識結果を受信: Text=%s", result.Text)
+				log.Printf("[DEBUG] Received recognition result: Text=%s", result.Text)
 				// イベントを発火
 				r.raiseRecognizing(result)
 				r.raiseRecognized(result)
@@ -538,23 +538,23 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 		}
 	}()
 
-	log.Printf("[DEBUG] 連続認識ループを開始します")
+	log.Printf("[DEBUG] Starting continuous recognition loop")
 	// Continuous recognition loop
 	for {
 		select {
 		case <-r.stopCh:
 			// Stop requested
-			log.Printf("[DEBUG] 停止リクエストを受信しました")
+			log.Printf("[DEBUG] Stop request received")
 			r.raiseSessionStopped()
 			return
 		case <-ctx.Done():
 			// Context canceled or timed out
-			log.Printf("[DEBUG] コンテキストがキャンセルまたはタイムアウトしました")
+			log.Printf("[DEBUG] Context was canceled or timed out")
 			r.raiseSessionStopped()
 			return
 		case err := <-errCh:
 			// エラーが発生した場合
-			log.Printf("[ERROR] 連続認識中にエラーが発生: %v", err)
+			log.Printf("[ERROR] Error occurred during continuous recognition: %v", err)
 			r.raiseCanceled(&CancellationDetails{
 				Reason:       CancellationReasonError,
 				ErrorCode:    CancellationErrorConnectionFailure,
@@ -567,12 +567,12 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 			if err != nil {
 				if err == io.EOF {
 					// ファイル終端に達した場合
-					log.Printf("[DEBUG] ファイル終端に達しました")
+					log.Printf("[DEBUG] Reached end of file")
 					r.raiseSessionStopped()
 					return
 				}
 				// その他のエラー
-				log.Printf("[ERROR] オーディオデータの読み込み中にエラーが発生: %v", err)
+				log.Printf("[ERROR] Error while reading audio data: %v", err)
 				r.raiseCanceled(&CancellationDetails{
 					Reason:       CancellationReasonError,
 					ErrorCode:    CancellationErrorConnectionFailure,
@@ -589,23 +589,23 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 
 				// 定期的に統計情報をログ出力
 				if time.Since(logStats) >= statsLogInterval {
-					log.Printf("[STATS] オーディオ読み取り統計: 試行=%d, 成功=%d, 総バイト数=%d, 平均バイト数=%.2f/読み取り",
+					log.Printf("[STATS] Audio reading statistics: attempts=%d, successful=%d, totalBytes=%d, avgBytes=%.2f/read",
 						readAttempts, successfulReads, totalBytesRead, float64(totalBytesRead)/float64(successfulReads))
 					logStats = time.Now()
 				}
 
-				log.Printf("[DEBUG] オーディオデータを %d バイト読み込みました", n)
+				log.Printf("[DEBUG] Read %d bytes of audio data", n)
 
 				// 音声レベルの計算と定期的なログ出力
 				if time.Since(lastLogTime) >= logInterval {
 					level := calculateAudioLevel(buffer[:n], n)
-					log.Printf("マイク音声レベル: %d/100", level)
+					log.Printf("Microphone audio level: %d/100", level)
 					lastLogTime = time.Now()
 				}
 
 				// オーディオデータの送信
 				if err := conn.sendAudioData(buffer[:n]); err != nil {
-					log.Printf("[ERROR] オーディオデータの送信中にエラーが発生: %v", err)
+					log.Printf("[ERROR] Error while sending audio data: %v", err)
 					r.raiseCanceled(&CancellationDetails{
 						Reason:       CancellationReasonError,
 						ErrorCode:    CancellationErrorConnectionFailure,
@@ -613,9 +613,9 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 					})
 					return
 				}
-				log.Printf("[DEBUG] オーディオデータを送信しました")
+				log.Printf("[DEBUG] Audio data sent")
 			} else {
-				log.Printf("[DEBUG] 読み込まれたオーディオデータがありません (n=0)")
+				log.Printf("[DEBUG] No audio data read (n=0)")
 			}
 
 			// 短い遅延を入れて CPU 使用率を抑える
@@ -626,7 +626,7 @@ func (r *TranslationRecognizer) continuousRecognitionWorker(ctx context.Context)
 
 // StartContinuousRecognition starts continuous recognition synchronously
 func (r *TranslationRecognizer) StartContinuousRecognition(ctx context.Context) error {
-	log.Printf("[DEBUG] StartContinuousRecognition が呼び出されました")
+	log.Printf("[DEBUG] StartContinuousRecognition called")
 	return r.StartContinuousRecognitionAsync(ctx)
 }
 
@@ -859,7 +859,7 @@ type speechServiceConnection struct {
 
 // connectToSpeechService はAzure Speech ServiceのWebSocket APIに接続します
 func (r *TranslationRecognizer) connectToSpeechService() (*speechServiceConnection, error) {
-	log.Printf("Speech Serviceへの接続開始: region=%s", r.config.GetRegion())
+	log.Printf("[DEBUG] Speech Service connection start: region=%s", r.config.GetRegion())
 
 	dialer := websocket.Dialer{
 		EnableCompression: true,
@@ -882,10 +882,10 @@ func (r *TranslationRecognizer) connectToSpeechService() (*speechServiceConnecti
 
 	// WebSocket URLの構築
 	wsURL := fmt.Sprintf("wss://%s.stt.speech.microsoft.com/speech/universal/v2", r.config.GetRegion())
-	log.Printf("Speech Service WebSocket URL: %s", wsURL)
+	log.Printf("[DEBUG] Speech Service WebSocket URL: %s", wsURL)
 
 	// WebSocket接続の確立
-	log.Printf("WebSocket接続を試行中...")
+	log.Printf("[DEBUG] Attempting WebSocket connection...")
 	conn, resp, err := dialer.Dial(wsURL, header)
 	if err != nil {
 		if resp != nil {
@@ -906,7 +906,7 @@ func (r *TranslationRecognizer) connectToSpeechService() (*speechServiceConnecti
 
 // sendAudioData はオーディオデータをWebSocket経由で送信します
 func (sc *speechServiceConnection) sendAudioData(data []byte) error {
-	log.Printf("[DEBUG] Speech Serviceに送信するオーディオデータ: %d バイト", len(data))
+	log.Printf("[DEBUG] Audio data to send to Speech Service: %d bytes", len(data))
 
 	requestID := uuid.New().String()
 
@@ -915,7 +915,7 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 	if normalizedSourceLang == "" {
 		return fmt.Errorf("invalid source language code: %s", sc.sourceLanguage)
 	}
-	log.Printf("[DEBUG] 正規化されたソース言語: %s (元の値: %s)", normalizedSourceLang, sc.sourceLanguage)
+	log.Printf("[DEBUG] Normalized source language: %s (original: %s)", normalizedSourceLang, sc.sourceLanguage)
 
 	// ターゲット言語の正規化と検証
 	normalizedTargetLangs := make([]string, 0, len(sc.languages))
@@ -926,7 +926,7 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 		}
 		normalizedTargetLangs = append(normalizedTargetLangs, normalized)
 	}
-	log.Printf("[DEBUG] 正規化されたターゲット言語: %v", normalizedTargetLangs)
+	log.Printf("[DEBUG] Normalized target languages: %v", normalizedTargetLangs)
 
 	// WebSocket設定メッセージの構築
 	configMsg := map[string]interface{}{
@@ -967,7 +967,7 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 		return err
 	}
 
-	log.Printf("[DEBUG] Speech Service設定: %s", string(configBytes))
+	log.Printf("[DEBUG] Speech Service configuration: %s", string(configBytes))
 
 	// Speech Service用のヘッダー形式でメッセージを構築
 	configHeader := fmt.Sprintf("Path: speech.config\r\nX-RequestId: %s\r\nX-Timestamp: %s\r\nContent-Type: application/json\r\n\r\n%s",
@@ -998,7 +998,7 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 		return err
 	}
 
-	log.Printf("[DEBUG] メッセージを送信完了 - RequestID: %s, DataSize: %d bytes", requestID, len(data))
+	log.Printf("[DEBUG] Message sent successfully - RequestID: %s, DataSize: %d bytes", requestID, len(data))
 	return nil
 }
 
@@ -1009,7 +1009,7 @@ func (sc *speechServiceConnection) receiveResults() (*TranslationRecognitionResu
 		return nil, err
 	}
 
-	log.Printf("[DEBUG] クライアントからメッセージを受信: type=%d, dataSize=%d bytes", messageType, len(message))
+	log.Printf("[DEBUG] Message received from client: type=%d, dataSize=%d bytes", messageType, len(message))
 
 	// テキストメッセージの場合（ヘッダーとJSONボディ）
 	if messageType == websocket.TextMessage {
@@ -1022,8 +1022,8 @@ func (sc *speechServiceConnection) receiveResults() (*TranslationRecognitionResu
 		headers := parts[0]
 		body := parts[1]
 
-		log.Printf("[DEBUG] 受信したヘッダー:\n%s", headers)
-		log.Printf("[DEBUG] 受信したボディ:\n%s", body)
+		log.Printf("[DEBUG] Received headers:\n%s", headers)
+		log.Printf("[DEBUG] Received body:\n%s", body)
 
 		// JSONをパース
 		var response map[string]interface{}
@@ -1096,7 +1096,7 @@ func (sc *speechServiceConnection) close() error {
 // calculateAudioLevel は音声バッファから平均音声レベル（0-100の範囲）を計算します
 func calculateAudioLevel(buffer []byte, n int) int {
 	if n == 0 {
-		log.Printf("DEBUG: 音声バッファが空です（サイズ=0）")
+		log.Printf("DEBUG: Audio buffer is empty (size=0)")
 		return 0
 	}
 
@@ -1125,7 +1125,7 @@ func calculateAudioLevel(buffer []byte, n int) int {
 	for i := 0; i < maxBytes; i++ {
 		bytesStr += fmt.Sprintf("%02x ", buffer[i])
 	}
-	log.Printf("DEBUG: 音声バッファ先頭バイト: %s, バッファサイズ: %d, 平均振幅: %d, レベル: %d/100",
+	log.Printf("DEBUG: Audio buffer head bytes: %s, buffer size: %d, average amplitude: %d, level: %d/100",
 		bytesStr, n, avgAmplitude, level)
 
 	return level

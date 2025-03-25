@@ -127,11 +127,11 @@ func TranslateHandler(c *gin.Context) {
 	}
 
 	// 翻訳の実行
-	log.Printf("翻訳リクエスト: %s", req.Text)
-	log.Printf("ターゲット言語: %s", req.TargetLanguage)
+	log.Printf("Translation request: %s", req.Text)
+	log.Printf("Target language: %s", req.TargetLanguage)
 	result, err := translatorClient.Translate(context.Background(), targetLanguages, textParam, nil)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("翻訳の実行に失敗しました: %v", err)})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to execute translation: %v", err)})
 		return
 	}
 
@@ -224,12 +224,12 @@ func ProcessAudioChunkHandler(c *gin.Context) {
 // WebSocketHandler はWebSocket接続を処理するハンドラー
 func WebSocketHandler(c *gin.Context) {
 	sessionID := c.Param("sessionId")
-	log.Printf("WebSocket接続開始: sessionID=%s", sessionID)
+	log.Printf("WebSocket connection started: sessionID=%s", sessionID)
 
 	// WebSocketにアップグレード
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Printf("WebSocketへのアップグレードに失敗しました: %v", err)
+		log.Printf("Failed to upgrade to WebSocket: %v", err)
 		return
 	}
 
@@ -249,61 +249,61 @@ func WebSocketHandler(c *gin.Context) {
 
 		// WebSocket接続を閉じる
 		conn.Close()
-		log.Printf("セッション %s を終了しました", sessionID)
+		log.Printf("Session %s terminated", sessionID)
 	}
 
 	// Speech Translation設定
-	log.Printf("Speech Translation設定の作成開始: key=%s, region=%s", speechSubscriptionKey[:5]+"...", speechRegion)
+	log.Printf("Creating Speech Translation config: key=%s, region=%s", speechSubscriptionKey[:5]+"...", speechRegion)
 	translationConfig, err := gospeech.SpeechTranslationConfigFromSubscription(speechSubscriptionKey, speechRegion)
 	if err != nil {
-		log.Printf("Speech Translation設定の作成に失敗しました: %v", err)
+		log.Printf("Failed to create Speech Translation config: %v", err)
 		conn.Close()
 		return
 	}
-	log.Printf("Speech Translation設定の作成完了")
+	log.Printf("Speech Translation config created successfully")
 
 	// オーディオ設定（カスタムストリーム）
-	log.Printf("オーディオ設定の作成開始")
+	log.Printf("Creating audio configuration")
 	pushStream := gospeech.NewPushAudioInputStream(gospeech.GetDefaultInputFormat())
 	audioConfig, err := gospeech.NewAudioConfigFromPushStream(pushStream)
 	if err != nil {
-		log.Printf("オーディオ設定の作成に失敗しました: %v", err)
+		log.Printf("Failed to create audio configuration: %v", err)
 		conn.Close()
 		return
 	}
 	if audioConfig.Source() == nil {
-		log.Printf("オーディオソースがnilです")
+		log.Printf("Audio source is nil")
 		conn.Close()
 		return
 	}
-	log.Printf("オーディオ設定の作成完了")
+	log.Printf("Audio configuration created successfully")
 
 	// クライアントからの初期設定メッセージを待機
 	var setupMsg StreamingTranslationRequest
 	if err := conn.ReadJSON(&setupMsg); err != nil {
-		log.Printf("初期設定メッセージの読み取りに失敗しました: %v", err)
+		log.Printf("Failed to read initial setup message: %v", err)
 		conn.Close()
 		return
 	}
-	log.Printf("クライアントから初期設定を受信: sourceLanguage=%s, targetLanguage=%s", setupMsg.SourceLanguage, setupMsg.TargetLanguage)
+	log.Printf("Received initial setup from client: sourceLanguage=%s, targetLanguage=%s", setupMsg.SourceLanguage, setupMsg.TargetLanguage)
 
 	// 認識する言語の設定
-	log.Printf("音声認識言語の設定: %s", setupMsg.SourceLanguage)
+	log.Printf("Setting speech recognition language: %s", setupMsg.SourceLanguage)
 	translationConfig.SetSpeechRecognitionLanguage(setupMsg.SourceLanguage)
 
 	// 翻訳先言語の追加
-	log.Printf("翻訳先言語の追加: %s", setupMsg.TargetLanguage)
+	log.Printf("Adding target language: %s", setupMsg.TargetLanguage)
 	translationConfig.AddTargetLanguage(setupMsg.TargetLanguage)
 
 	// 音声認識器の作成
-	log.Printf("TranslationRecognizerの作成開始")
+	log.Printf("Creating TranslationRecognizer")
 	recognizer, err := gospeech.NewTranslationRecognizer(translationConfig, audioConfig)
 	if err != nil {
-		log.Printf("音声認識器の作成に失敗しました: %v", err)
+		log.Printf("Failed to create speech recognizer: %v", err)
 		conn.Close()
 		return
 	}
-	log.Printf("TranslationRecognizerの作成完了")
+	log.Printf("TranslationRecognizer created successfully")
 
 	// セッション情報を保存
 	session := &StreamingSession{
@@ -323,14 +323,14 @@ func WebSocketHandler(c *gin.Context) {
 	activeSessionsMutex.Unlock()
 
 	// クライアントに準備完了を通知
-	log.Printf("クライアントに準備完了を通知: sessionID=%s", sessionID)
+	log.Printf("Notifying client of ready status: sessionID=%s", sessionID)
 	conn.WriteJSON(gin.H{"status": "ready", "sessionId": sessionID})
 
 	// 認識結果のイベントハンドラーの設定
 	recognizer.Recognized().Connect(func(eventArgs interface{}) {
 		args, ok := eventArgs.(*gospeech.TranslationRecognitionEventArgs)
 		if !ok {
-			log.Printf("認識結果のイベント引数の型が不正: %T", eventArgs)
+			log.Printf("Invalid event argument type for recognition result: %T", eventArgs)
 			return
 		}
 
@@ -339,7 +339,7 @@ func WebSocketHandler(c *gin.Context) {
 			// 翻訳結果を取得
 			translatedText, exists := result.Translations[setupMsg.TargetLanguage]
 			if !exists {
-				log.Printf("指定された言語の翻訳結果がありません: targetLanguage=%s", setupMsg.TargetLanguage)
+				log.Printf("No translation result for specified language: targetLanguage=%s", setupMsg.TargetLanguage)
 				return
 			}
 
@@ -353,9 +353,9 @@ func WebSocketHandler(c *gin.Context) {
 				SegmentID:      uuid.New().String(),
 			}
 
-			log.Printf("最終翻訳結果を送信: %+v", response)
+			log.Printf("Sending final translation result: %+v", response)
 			if err := conn.WriteJSON(response); err != nil {
-				log.Printf("WebSocketへの書き込みに失敗しました: %v", err)
+				log.Printf("Failed to write to WebSocket: %v", err)
 			}
 		}
 	})
@@ -364,7 +364,7 @@ func WebSocketHandler(c *gin.Context) {
 	recognizer.Recognizing().Connect(func(eventArgs interface{}) {
 		args, ok := eventArgs.(*gospeech.TranslationRecognitionEventArgs)
 		if !ok {
-			log.Printf("認識中イベント引数の型が不正: %T", eventArgs)
+			log.Printf("Invalid event argument type for recognition in progress: %T", eventArgs)
 			return
 		}
 
@@ -373,7 +373,7 @@ func WebSocketHandler(c *gin.Context) {
 			// 翻訳結果を取得
 			translatedText, exists := result.Translations[setupMsg.TargetLanguage]
 			if !exists {
-				log.Printf("指定された言語の暫定翻訳結果がありません: targetLanguage=%s", setupMsg.TargetLanguage)
+				log.Printf("No interim translation result for specified language: targetLanguage=%s", setupMsg.TargetLanguage)
 				return
 			}
 
@@ -387,24 +387,24 @@ func WebSocketHandler(c *gin.Context) {
 				SegmentID:      uuid.New().String(),
 			}
 
-			log.Printf("暫定翻訳結果を送信: %+v", response)
+			log.Printf("Sending interim translation result: %+v", response)
 			if err := conn.WriteJSON(response); err != nil {
-				log.Printf("WebSocketへの書き込みに失敗しました: %v", err)
+				log.Printf("Failed to write to WebSocket: %v", err)
 			}
 		}
 	})
 
 	// 連続認識を開始
-	log.Printf("[DEBUG] 連続認識の開始前: sessionID=%s", sessionID)
-	log.Printf("[DEBUG] 音声認識器情報: %+v", recognizer)
-	log.Printf("[DEBUG] オーディオソース情報: SourceType=%s", audioConfig.SourceType())
+	log.Printf("[DEBUG] Before starting continuous recognition: sessionID=%s", sessionID)
+	log.Printf("[DEBUG] Speech recognizer info: %+v", recognizer)
+	log.Printf("[DEBUG] Audio source info: SourceType=%s", audioConfig.SourceType())
 	if err := recognizer.StartContinuousRecognition(ctx); err != nil {
-		log.Printf("連続認識の開始に失敗しました: %v", err)
-		conn.WriteJSON(gin.H{"error": "連続認識の開始に失敗しました"})
+		log.Printf("Failed to start continuous recognition: %v", err)
+		conn.WriteJSON(gin.H{"error": "Failed to start continuous recognition"})
 		conn.Close()
 		return
 	}
-	log.Printf("[DEBUG] 連続認識を正常に開始しました: sessionID=%s", sessionID)
+	log.Printf("[DEBUG] Successfully started continuous recognition: sessionID=%s", sessionID)
 
 	// WebSocketのクローズを監視するメイン処理
 	for {
@@ -412,16 +412,16 @@ func WebSocketHandler(c *gin.Context) {
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
 			// クライアントが切断した場合など
-			log.Printf("WebSocket読み取りエラー: %v", err)
+			log.Printf("WebSocket read error: %v", err)
 
 			// 連続認識を停止
 			if err := recognizer.StopContinuousRecognition(); err != nil {
-				log.Printf("連続認識の停止に失敗しました: %v", err)
+				log.Printf("Failed to stop continuous recognition: %v", err)
 			}
 
 			// 認識器のクリーンアップ
 			if err := recognizer.Close(); err != nil {
-				log.Printf("認識器のクリーンアップに失敗しました: %v", err)
+				log.Printf("Failed to clean up recognizer: %v", err)
 			}
 
 			// クリーンアップ処理を実行
@@ -430,13 +430,13 @@ func WebSocketHandler(c *gin.Context) {
 		}
 
 		// メッセージを処理（必要に応じて）
-		log.Printf("[DEBUG] クライアントからメッセージを受信: type=%d, dataSize=%d bytes", messageType, len(message))
+		log.Printf("[DEBUG] Received message from client: type=%d, dataSize=%d bytes", messageType, len(message))
 
 		// バイナリメッセージ（音声データ）の処理
 		if messageType == websocket.BinaryMessage {
 			pushStream, ok := audioConfig.Source().(*gospeech.PushAudioInputStream)
 			if !ok {
-				log.Printf("オーディオソースがPushAudioInputStreamではありません: %T", audioConfig.Source())
+				log.Printf("Audio source is not a PushAudioInputStream: %T", audioConfig.Source())
 				continue
 			}
 
@@ -444,12 +444,12 @@ func WebSocketHandler(c *gin.Context) {
 			if len(message) > 0 {
 				bytesWritten, err := pushStream.Write(message)
 				if err != nil {
-					log.Printf("音声データの書き込みに失敗しました: %v", err)
+					log.Printf("Failed to write audio data: %v", err)
 					continue
 				}
-				log.Printf("[DEBUG] 音声データをPushAudioInputStreamに書き込みました: 受信=%d バイト, 書き込み=%d バイト", len(message), bytesWritten)
+				log.Printf("[DEBUG] Wrote audio data to PushAudioInputStream: received=%d bytes, written=%d bytes", len(message), bytesWritten)
 			} else {
-				log.Printf("[DEBUG] 読み込まれたオーディオデータがありません (n=0)")
+				log.Printf("[DEBUG] No audio data read (n=0)")
 			}
 			continue // バイナリメッセージの処理後は次のメッセージへ
 		}
@@ -458,26 +458,26 @@ func WebSocketHandler(c *gin.Context) {
 		if messageType == websocket.TextMessage {
 			var jsonMsg map[string]interface{}
 			if err := json.Unmarshal(message, &jsonMsg); err != nil {
-				log.Printf("JSONの解析に失敗しました: %v", err)
+				log.Printf("Failed to parse JSON: %v", err)
 				continue
 			}
 
 			// コントロールメッセージの処理
 			switch jsonMsg["type"] {
 			case "init":
-				log.Printf("[DEBUG] 初期化メッセージを受信")
+				log.Printf("[DEBUG] Received initialization message")
 				initResponse := map[string]interface{}{
 					"type":   "init_response",
 					"status": "ready",
 				}
 				if err := conn.WriteJSON(initResponse); err != nil {
-					log.Printf("初期化応答の送信に失敗しました: %v", err)
+					log.Printf("Failed to send initialization response: %v", err)
 				}
 
 			case "end":
-				log.Printf("クライアントからセッション終了リクエストを受信")
+				log.Printf("Received session end request from client")
 				if err := recognizer.StopContinuousRecognition(); err != nil {
-					log.Printf("連続認識の停止に失敗しました: %v", err)
+					log.Printf("Failed to stop continuous recognition: %v", err)
 				}
 				cleanup()
 				return
@@ -489,27 +489,27 @@ func WebSocketHandler(c *gin.Context) {
 						// Base64デコード
 						audioData, err := base64.StdEncoding.DecodeString(base64Audio)
 						if err != nil {
-							log.Printf("音声データのBase64デコードに失敗しました: %v", err)
+							log.Printf("Failed to Base64 decode audio data: %v", err)
 							continue
 						}
 
 						pushStream, ok := audioConfig.Source().(*gospeech.PushAudioInputStream)
 						if !ok {
-							log.Printf("オーディオソースがPushAudioInputStreamではありません: %T", audioConfig.Source())
+							log.Printf("Audio source is not a PushAudioInputStream: %T", audioConfig.Source())
 							continue
 						}
 
 						// 音声データを書き込む
 						bytesWritten, err := pushStream.Write(audioData)
 						if err != nil {
-							log.Printf("音声データの書き込みに失敗しました: %v", err)
+							log.Printf("Failed to write audio data: %v", err)
 							continue
 						}
-						log.Printf("[DEBUG] 音声データをPushAudioInputStreamに書き込みました: 受信=%d バイト, 書き込み=%d バイト", len(audioData), bytesWritten)
+						log.Printf("[DEBUG] Wrote audio data to PushAudioInputStream: received=%d bytes, written=%d bytes", len(audioData), bytesWritten)
 						continue
 					}
 				}
-				log.Printf("[DEBUG] 未知のコントロールメッセージを受信: %s", string(message))
+				log.Printf("[DEBUG] Received unknown control message: %s", string(message))
 			}
 		}
 	}
@@ -529,7 +529,7 @@ func CloseStreamingSessionHandler(c *gin.Context) {
 	activeSessionsMutex.RUnlock()
 
 	if !exists {
-		c.JSON(http.StatusOK, gin.H{"status": "セッションはすでに終了しています"})
+		c.JSON(http.StatusOK, gin.H{"status": "Session is already terminated"})
 		return
 	}
 
@@ -556,5 +556,5 @@ func CloseStreamingSessionHandler(c *gin.Context) {
 	delete(activeSessions, req.SessionID)
 	activeSessionsMutex.Unlock()
 
-	c.JSON(http.StatusOK, gin.H{"status": "セッションを終了しました"})
+	c.JSON(http.StatusOK, gin.H{"status": "Session terminated"})
 }
