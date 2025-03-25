@@ -1,6 +1,6 @@
 # Real-time Translation Service
 
-Real-time translation service using Azure Speech Service.
+Real-time translation service using Azure Speech Service and Azure Translator.
 
 日本語版のREADMEは[こちら](./README-ja.md)をご覧ください。
 
@@ -44,10 +44,22 @@ type TranslateResultAllItemDetectedLanguage struct {
 
 When the server starts successfully, you will see a message like:
 ```
-Server is running on port 8080
+Speech Recognition and Translation Server is running on port 8080
 ```
 
 - [How to setup frontend App](./frontend/README.md)
+
+## Environment Variables
+
+The application requires the following environment variables:
+
+### Backend:
+- `AZURE_CLIENT_ID` - Service Principal Client ID
+- `AZURE_CLIENT_SECRET` - Service Principal Secret
+- `AZURE_TENANT_ID` - Entra ID Tenant ID
+- `SPEECH_SERVICE_KEY` - Azure Speech Service subscription key
+- `SPEECH_SERVICE_REGION` - Azure Speech Service region (e.g., japaneast)
+- `PORT` - Port used by the server (default: 8080)
 
 ## Stopping the API
 
@@ -81,18 +93,27 @@ curl -X POST http://localhost:8080/api/v1/streaming/start \
   -d '{
     "sourceLanguage": "en",
     "targetLanguage": "ja",
-    "audioFormat": "audio/wav"
+    "audioFormat": "wav"
   }'
 ```
 
-Response will include a `sessionId` that you'll need for subsequent requests:
+Response will include a `sessionId` and `webSocketURL` that you'll need for subsequent requests:
+
 ```json
 {
-  "sessionId": "12345678-1234-1234-1234-123456789abc"
+  "sessionId": "12345678-1234-1234-1234-123456789abc",
+  "webSocketURL": "/api/v1/streaming/ws/12345678-1234-1234-1234-123456789abc",
+  "sourceLanguage": "en",
+  "targetLanguage": "ja"
 }
 ```
 
-#### 2. Process audio chunks
+#### 2. Connect to WebSocket for real-time translation
+
+For real-time translation, connect to the WebSocket URL provided in the response to the start endpoint.
+After connecting, follow the WebSocket protocol documented in the backend README.
+
+#### 3. Process audio chunks (Alternative to WebSocket)
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/streaming/process \
@@ -103,7 +124,7 @@ curl -X POST http://localhost:8080/api/v1/streaming/process \
   }'
 ```
 
-#### 3. Close the streaming session
+#### 4. Close the streaming session
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/streaming/close \
@@ -122,6 +143,7 @@ curl http://localhost:8080/api/v1/health
 ```
 
 Expected response:
+
 ```json
 {
   "status": "ok"
