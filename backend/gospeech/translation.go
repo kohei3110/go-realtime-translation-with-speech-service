@@ -857,7 +857,7 @@ type speechServiceConnection struct {
 	sourceLanguage string
 }
 
-// connectToSpeechService はAzure Speech ServiceのWebSocket APIに接続します
+// connectToSpeechService connects to the Azure Speech Service WebSocket API
 func (r *TranslationRecognizer) connectToSpeechService() (*speechServiceConnection, error) {
 	log.Printf("[DEBUG] Speech Service connection start: region=%s", r.config.GetRegion())
 
@@ -865,7 +865,7 @@ func (r *TranslationRecognizer) connectToSpeechService() (*speechServiceConnecti
 		EnableCompression: true,
 	}
 
-	// ヘッダーの準備
+	// Prepare headers
 	header := http.Header{}
 	authToken := r.config.GetAuthorizationToken()
 	if authToken == "" {
@@ -873,27 +873,27 @@ func (r *TranslationRecognizer) connectToSpeechService() (*speechServiceConnecti
 	}
 
 	if authToken == "" {
-		return nil, fmt.Errorf("認証情報が設定されていません")
+		return nil, fmt.Errorf("authentication information is not configured")
 	}
 
 	header.Add("Authorization", "Bearer "+authToken)
 	header.Add("Ocp-Apim-Subscription-Key", os.Getenv("SPEECH_SERVICE_KEY"))
 	header.Add("X-ConnectionId", uuid.New().String())
 
-	// WebSocket URLの構築
+	// Construct WebSocket URL
 	wsURL := fmt.Sprintf("wss://%s.stt.speech.microsoft.com/speech/universal/v2", r.config.GetRegion())
 	log.Printf("[DEBUG] Speech Service WebSocket URL: %s", wsURL)
 
-	// WebSocket接続の確立
+	// Establish WebSocket connection
 	log.Printf("[DEBUG] Attempting WebSocket connection...")
 	conn, resp, err := dialer.Dial(wsURL, header)
 	if err != nil {
 		if resp != nil {
-			log.Printf("接続エラー - Status: %d, Headers: %v", resp.StatusCode, resp.Header)
+			log.Printf("Connection error - Status: %d, Headers: %v", resp.StatusCode, resp.Header)
 		}
 		return nil, fmt.Errorf("failed to connect to Speech Service: %v", err)
 	}
-	log.Printf("Speech ServiceのWebSocket接続が確立されました")
+	log.Printf("WebSocket connection to Speech Service established")
 
 	return &speechServiceConnection{
 		conn:           conn,
@@ -904,20 +904,20 @@ func (r *TranslationRecognizer) connectToSpeechService() (*speechServiceConnecti
 	}, nil
 }
 
-// sendAudioData はオーディオデータをWebSocket経由で送信します
+// sendAudioData sends audio data via WebSocket
 func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 	log.Printf("[DEBUG] Audio data to send to Speech Service: %d bytes", len(data))
 
 	requestID := uuid.New().String()
 
-	// 言語コードの正規化と検証
+	// Normalize and validate language codes
 	normalizedSourceLang := normalizeLanguageCode(sc.sourceLanguage, true)
 	if normalizedSourceLang == "" {
 		return fmt.Errorf("invalid source language code: %s", sc.sourceLanguage)
 	}
 	log.Printf("[DEBUG] Normalized source language: %s (original: %s)", normalizedSourceLang, sc.sourceLanguage)
 
-	// ターゲット言語の正規化と検証
+	// Normalize and validate target languages
 	normalizedTargetLangs := make([]string, 0, len(sc.languages))
 	for _, lang := range sc.languages {
 		normalized := normalizeLanguageCode(lang, false)
@@ -928,13 +928,13 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 	}
 	log.Printf("[DEBUG] Normalized target languages: %v", normalizedTargetLangs)
 
-	// WebSocket設定メッセージの構築
+	// Construct WebSocket configuration message
 	configMsg := map[string]interface{}{
 		"context": map[string]interface{}{
 			"system": map[string]interface{}{
 				"name":    "SpeechSDK",
-				"version": "1.30.0", // バージョンを更新
-				"build":   "Go",     // JavaScriptからGoに変更
+				"version": "1.30.0",
+				"build":   "Go",
 			},
 		},
 		"config": map[string]interface{}{
@@ -944,12 +944,12 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 				"sourceLanguageForTranslation": normalizedSourceLang,
 				"features": map[string]interface{}{
 					"enableTranslation":   true,
-					"wordLevelTimestamps": true,       // 単語レベルのタイムスタンプを有効化
-					"punctuation":         "explicit", // 句読点を明示的に追加
+					"wordLevelTimestamps": true,
+					"punctuation":         "explicit",
 				},
-				"profanity":               "masked",                 // 不適切な表現を伏せ字に
-				"timeToDetectEndOfSpeech": "1500",                   // 音声終了検出時間を1.5秒に
-				"scenarios":               []string{"conversation"}, // 会話シナリオに最適化
+				"profanity":               "masked",
+				"timeToDetectEndOfSpeech": "1500",
+				"scenarios":               []string{"conversation"},
 			},
 			"input": map[string]interface{}{
 				"format": "audio/x-wav",
@@ -960,41 +960,41 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 		},
 	}
 
-	// 設定メッセージをJSONに変換
+	// Convert configuration message to JSON
 	configBytes, err := json.Marshal(configMsg)
 	if err != nil {
-		log.Printf("[ERROR] 設定メッセージのJSONエンコードに失敗: %v", err)
+		log.Printf("[ERROR] Failed to JSON encode configuration message: %v", err)
 		return err
 	}
 
 	log.Printf("[DEBUG] Speech Service configuration: %s", string(configBytes))
 
-	// Speech Service用のヘッダー形式でメッセージを構築
+	// Construct message in Speech Service header format
 	configHeader := fmt.Sprintf("Path: speech.config\r\nX-RequestId: %s\r\nX-Timestamp: %s\r\nContent-Type: application/json\r\n\r\n%s",
 		requestID,
 		time.Now().UTC().Format(time.RFC3339),
 		configBytes)
 
-	// 設定メッセージを送信
+	// Send configuration message
 	if err := sc.conn.WriteMessage(websocket.TextMessage, []byte(configHeader)); err != nil {
-		log.Printf("[ERROR] 設定メッセージの送信に失敗: %v", err)
+		log.Printf("[ERROR] Failed to send configuration message: %v", err)
 		return err
 	}
 
-	// オーディオメッセージのヘッダーを構築
+	// Construct audio message header
 	audioHeader := fmt.Sprintf("Path: audio\r\nX-RequestId: %s\r\nX-Timestamp: %s\r\nContent-Type: audio/x-wav\r\n\r\n",
 		requestID,
 		time.Now().UTC().Format(time.RFC3339))
 
-	// オーディオヘッダーを送信
+	// Send audio header
 	if err := sc.conn.WriteMessage(websocket.TextMessage, []byte(audioHeader)); err != nil {
-		log.Printf("[ERROR] オーディオヘッダーの送信に失敗: %v", err)
+		log.Printf("[ERROR] Failed to send audio header: %v", err)
 		return err
 	}
 
-	// オーディオデータを送信
+	// Send audio data
 	if err := sc.conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
-		log.Printf("[ERROR] オーディオデータの送信に失敗: %v", err)
+		log.Printf("[ERROR] Failed to send audio data: %v", err)
 		return err
 	}
 
@@ -1131,15 +1131,15 @@ func calculateAudioLevel(buffer []byte, n int) int {
 	return level
 }
 
-// normalizeLanguageCode は言語コードをBCP-47形式、もしくは単純な言語コードに正規化します
+// normalizeLanguageCode normalizes language codes to BCP-47 format or simple language code
 func normalizeLanguageCode(lang string, isSourceLanguage bool) string {
-	// 空白を削除し、小文字に変換
+	// Remove spaces and convert to lowercase
 	lang = strings.TrimSpace(lang)
 	if lang == "" {
 		return ""
 	}
 
-	// 言語コードのマッピング
+	// Language code mapping
 	langMap := map[string]string{
 		"ja": "ja-JP",
 		"en": "en-US",
@@ -1160,35 +1160,35 @@ func normalizeLanguageCode(lang string, isSourceLanguage bool) string {
 	}
 
 	if isSourceLanguage {
-		// ソース言語の場合は完全なBCP-47形式が必要
+		// Source language requires full BCP-47 format
 		if strings.Contains(lang, "-") {
 			parts := strings.Split(lang, "-")
 			if len(parts) != 2 {
-				log.Printf("[WARNING] 無効な言語コード形式: %s", lang)
+				log.Printf("[WARNING] Invalid language code format: %s", lang)
 				return ""
 			}
-			// 言語コードは小文字、地域コードは大文字に正規化
+			// Language code in lowercase, region code in uppercase
 			langCode := strings.ToLower(parts[0])
 			regionCode := strings.ToUpper(parts[1])
 			return fmt.Sprintf("%s-%s", langCode, regionCode)
 		}
 
-		// マッピングを使用して完全な形式に変換
+		// Use mapping to convert to full format
 		if normalized, ok := langMap[strings.ToLower(lang)]; ok {
 			return normalized
 		}
 	} else {
-		// ターゲット言語の場合は言語コードのみ必要
+		// Target language only needs language code
 		if strings.Contains(lang, "-") {
-			// ハイフンが含まれている場合は言語部分のみを取得
+			// If contains hyphen, get only the language part
 			parts := strings.Split(lang, "-")
 			return strings.ToLower(parts[0])
 		}
 
-		// 既に言語コードのみの場合はそのまま小文字で返す
+		// If already just a language code, return it in lowercase
 		return strings.ToLower(lang)
 	}
 
-	log.Printf("[WARNING] サポートされていない言語コード: %s", lang)
+	log.Printf("[WARNING] Unsupported language code: %s", lang)
 	return ""
 }

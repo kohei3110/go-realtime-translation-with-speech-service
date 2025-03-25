@@ -2,7 +2,7 @@
 
 ## 概要
 
-このバックエンドサービスは、Azure Translator Serviceを利用して、テキスト翻訳およびリアルタイム音声ストリーミング翻訳機能を提供するRESTful APIです。Goで実装され、Ginフレームワークを使用しています。
+このバックエンドサービスは、Azure Translator ServiceとAzure Speech Serviceを利用して、テキスト翻訳およびリアルタイム音声ストリーミング翻訳機能を提供するRESTful APIです。Goで実装され、Ginフレームワークを使用しています。
 
 ## システムアーキテクチャ
 
@@ -10,6 +10,7 @@
 
 - **Gin Webサーバー**: HTTPリクエストを処理し、各種エンドポイントを提供
 - **Azure Translator クライアント**: Azure Translator Text APIと通信するためのクライアント
+- **Azure Speech Service**: リアルタイム音声認識と翻訳に使用
 - **セッション管理**: ストリーミング翻訳セッションを管理するためのインメモリストレージ
 - **音声処理**: Base64エンコードされた音声データを処理するためのモジュール
 
@@ -25,6 +26,13 @@
                           |                |         |                  |
                           | TranslatorClient+-------->+ Azure Translator |
                           |                |         |                  |
+                          +----------------+         +------------------+
+                                  |
+                                  v
+                          +----------------+         +------------------+
+                          |                |         |                  |
+                          | WebSocket      +-------->+ Azure Speech     |
+                          | インターフェース |         | Service          |
                           +----------------+         +------------------+
 ```
 
@@ -93,7 +101,10 @@ POST /api/v1/streaming/start
 **レスポンス例**:
 ```json
 {
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "webSocketURL": "/api/v1/streaming/ws/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sourceLanguage": "ja",
+  "targetLanguage": "en"
 }
 ```
 
@@ -115,15 +126,64 @@ Base64エンコードされた音声チャンクを送信して処理します�
 
 **レスポンス例**:
 ```json
-[
-  {
-    "sourceLanguage": "ja",
-    "targetLanguage": "en",
-    "translatedText": "Hello, how are you?",
-    "isFinal": true,
-    "segmentId": "f7e8d9c0-b1a2-3456-7890-abcdef123456"
+{
+  "status": "音声チャンクを受信しました"
+}
+```
+
+### WebSocketストリーミング接続
+
+```
+GET /api/v1/streaming/ws/:sessionId
+```
+
+リアルタイム音声認識と翻訳のためのWebSocketエンドポイント。
+
+このWebSocketエンドポイントに接続した後、クライアントは以下の手順で通信します：
+
+1. 初期設定メッセージを送信：
+```json
+{
+  "sourceLanguage": "ja",
+  "targetLanguage": "en",
+  "audioFormat": "wav"
+}
+```
+
+2. サーバーは以下のように応答：
+```json
+{
+  "status": "ready",
+  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+3. クライアントはバイナリWebSocketメッセージとして、または次のようにテキストメッセージ内でbase64エンコードされたデータとして音声データを送信できます：
+```json
+{
+  "audio": {
+    "data": "UklGRjoAAABXQVZFZm10IBIAAAAHAAEAQB8AAEAfAAABAAgAAABMSVNUHAAAAElORk9JU0ZUDQAAAExhdmY1OC4yOS4xMDDA/w=="
   }
-]
+}
+```
+
+4. サーバーは翻訳結果を送信：
+```json
+{
+  "sourceLanguage": "ja",
+  "targetLanguage": "en",
+  "translatedText": "Hello, how are you?",
+  "originalText": "こんにちは、お元気ですか？",
+  "isFinal": true,
+  "segmentId": "f7e8d9c0-b1a2-3456-7890-abcdef123456"
+}
+```
+
+5. セッションを終了するには、以下を送信：
+```json
+{
+  "type": "end"
+}
 ```
 
 ### ストリーミングセッション終了
@@ -189,17 +249,18 @@ cp .env.example .env
 | AZURE_CLIENT_ID | サービスプリンシパルのクライアントID |
 | AZURE_CLIENT_SECRET | サービスプリンシパルのシークレット |
 | AZURE_TENANT_ID | Entra IDのテナントID |
-| TRANSLATOR_SUBSCRIPTION_KEY | Azure Translator リソースのサブスクリプションキー |
-| TRANSLATOR_SUBSCRIPTION_REGION | Azure Translator リソースのリージョン（例: japaneast） |
+| SPEECH_SERVICE_KEY | Azure Speech Serviceのサブスクリプションキー |
+| SPEECH_SERVICE_REGION | Azure Speech Serviceのリージョン（例: japaneast） |
 | PORT | サーバーが使用するポート（デフォルト: 8080） |
 
 ## ローカル開発
 
 ### 必要条件
 
-- Go 1.24以上
+- Go 1.16以上
 - Azure サブスクリプション
 - Azure Translator リソース
+- Azure Speech Service リソース
 
 ### ローカル実行
 

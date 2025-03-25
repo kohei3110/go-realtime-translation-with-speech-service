@@ -1,11 +1,10 @@
 # リアルタイム翻訳サービス
 
-Azure Speech Serviceを使用したリアルタイム翻訳サービスです。
+Azure Speech ServiceとAzure Translatorを使用したリアルタイム翻訳サービスです。
 
 ## AutoRest を使った Go Client Library の生成
 
 [AutoRest](https://github.com/Azure/autorest)に API 仕様書を読み込ませ、任意の言語でクライアントライブラリを生成させるアプローチを採用。
-
 今回は、Translator API 仕様書を読み込ませ、Go のクライアントライブラリを生成。
 
 ```bash
@@ -42,10 +41,22 @@ type TranslateResultAllItemDetectedLanguage struct {
 
 サーバーが正常に起動すると、以下のようなメッセージが表示されます：
 ```
-Server is running on port 8080
+Speech Recognition and Translation Server is running on port 8080
 ```
 
 - [フロントエンド起動手順書](./frontend/README-ja.md)
+
+## 環境変数
+
+アプリケーションは以下の環境変数を必要とします：
+
+### バックエンド：
+- `AZURE_CLIENT_ID` - サービスプリンシパルのクライアントID
+- `AZURE_CLIENT_SECRET` - サービスプリンシパルのシークレット
+- `AZURE_TENANT_ID` - Entra IDのテナントID
+- `SPEECH_SERVICE_KEY` - Azure Speech Serviceのサブスクリプションキー
+- `SPEECH_SERVICE_REGION` - Azure Speech Serviceのリージョン（例：japaneast）
+- `PORT` - サーバーが使用するポート（デフォルト：8080）
 
 ## APIの終了方法
 
@@ -79,18 +90,27 @@ curl -X POST http://localhost:8080/api/v1/streaming/start \
   -d '{
     "sourceLanguage": "en",
     "targetLanguage": "ja",
-    "audioFormat": "audio/wav"
+    "audioFormat": "wav"
   }'
 ```
 
-レスポンスには、後続のリクエストに必要な `sessionId` が含まれます：
+レスポンスには、後続のリクエストに必要な `sessionId` と `webSocketURL` が含まれます：
+
 ```json
 {
-  "sessionId": "12345678-1234-1234-1234-123456789abc"
+  "sessionId": "12345678-1234-1234-1234-123456789abc",
+  "webSocketURL": "/api/v1/streaming/ws/12345678-1234-1234-1234-123456789abc",
+  "sourceLanguage": "en",
+  "targetLanguage": "ja"
 }
 ```
 
-#### 2. オーディオチャンクの処理
+#### 2. リアルタイム翻訳のためのWebSocket接続
+
+リアルタイム翻訳のためには、startエンドポイントのレスポンスで提供されたWebSocket URLに接続します。
+接続後は、バックエンドのREADMEに記載されているWebSocketプロトコルに従ってください。
+
+#### 3. オーディオチャンクの処理（WebSocketの代替手段）
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/streaming/process \
@@ -101,7 +121,7 @@ curl -X POST http://localhost:8080/api/v1/streaming/process \
   }'
 ```
 
-#### 3. ストリーミングセッションの終了
+#### 4. ストリーミングセッションの終了
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/streaming/close \
@@ -120,6 +140,7 @@ curl http://localhost:8080/api/v1/health
 ```
 
 期待されるレスポンス：
+
 ```json
 {
   "status": "ok"

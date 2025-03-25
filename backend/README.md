@@ -10,6 +10,7 @@ The system consists of the following components:
 
 - **Gin Web Server**: Processes HTTP requests and provides various endpoints
 - **Azure Translator Client**: Client for communicating with the Azure Translator Text API
+- **Azure Speech Service**: Used for real-time speech recognition and translation
 - **Session Management**: In-memory storage for managing streaming translation sessions
 - **Audio Processing**: Module for processing Base64 encoded audio data
 
@@ -25,6 +26,13 @@ The system consists of the following components:
                           |                |         |                  |
                           | TranslatorClient+-------->+ Azure Translator |
                           |                |         |                  |
+                          +----------------+         +------------------+
+                                  |
+                                  v
+                          +----------------+         +------------------+
+                          |                |         |                  |
+                          | WebSocket      +-------->+ Azure Speech     |
+                          | Interface      |         | Service          |
                           +----------------+         +------------------+
 ```
 
@@ -93,7 +101,10 @@ Starts a streaming translation session.
 **Response Example**:
 ```json
 {
-  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "webSocketURL": "/api/v1/streaming/ws/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sourceLanguage": "ja",
+  "targetLanguage": "en"
 }
 ```
 
@@ -115,15 +126,64 @@ Sends and processes Base64 encoded audio chunks.
 
 **Response Example**:
 ```json
-[
-  {
-    "sourceLanguage": "ja",
-    "targetLanguage": "en",
-    "translatedText": "Hello, how are you?",
-    "isFinal": true,
-    "segmentId": "f7e8d9c0-b1a2-3456-7890-abcdef123456"
+{
+  "status": "Audio chunk received"
+}
+```
+
+### WebSocket Streaming Connection
+
+```
+GET /api/v1/streaming/ws/:sessionId
+```
+
+WebSocket endpoint for real-time speech recognition and translation.
+
+After connecting to this WebSocket endpoint, the client should:
+
+1. Send an initial setup message:
+```json
+{
+  "sourceLanguage": "ja",
+  "targetLanguage": "en",
+  "audioFormat": "wav"
+}
+```
+
+2. The server will respond with:
+```json
+{
+  "status": "ready",
+  "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+3. The client can then send audio data as binary WebSocket messages, or as base64-encoded data in text messages:
+```json
+{
+  "audio": {
+    "data": "UklGRjoAAABXQVZFZm10IBIAAAAHAAEAQB8AAEAfAAABAAgAAABMSVNUHAAAAElORk9JU0ZUDQAAAExhdmY1OC4yOS4xMDDA/w=="
   }
-]
+}
+```
+
+4. The server will send translation results:
+```json
+{
+  "sourceLanguage": "ja",
+  "targetLanguage": "en",
+  "translatedText": "Hello, how are you?",
+  "originalText": "こんにちは、お元気ですか？",
+  "isFinal": true,
+  "segmentId": "f7e8d9c0-b1a2-3456-7890-abcdef123456"
+}
+```
+
+5. To end the session, send:
+```json
+{
+  "type": "end"
+}
 ```
 
 ### Close Streaming Session
@@ -144,7 +204,7 @@ Ends a streaming session.
 **Response Example**:
 ```json
 {
-  "status": "Session closed"
+  "status": "Session terminated"
 }
 ```
 
@@ -189,8 +249,8 @@ cp .env.example .env
 | AZURE_CLIENT_ID | Service Principal Client ID |
 | AZURE_CLIENT_SECRET | Service Principal Secret |
 | AZURE_TENANT_ID | Entra ID Tenant ID |
-| TRANSLATOR_SUBSCRIPTION_KEY | Azure Translator resource subscription key |
-| TRANSLATOR_SUBSCRIPTION_REGION | Azure Translator resource region (e.g., japaneast) |
+| SPEECH_SERVICE_KEY | Azure Speech Service subscription key |
+| SPEECH_SERVICE_REGION | Azure Speech Service region (e.g., japaneast) |
 | PORT | Port used by the server (default: 8080) |
 
 ## Local Development
@@ -200,6 +260,7 @@ cp .env.example .env
 - Go 1.16 or higher
 - Azure subscription
 - Azure Translator resource
+- Azure Speech Service resource
 
 ### Local Execution
 
