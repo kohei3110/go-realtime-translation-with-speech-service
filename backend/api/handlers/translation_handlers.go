@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -232,9 +233,24 @@ func WebSocketHandler(c *gin.Context) {
 		return
 	}
 
-	// セッションコンテキストの作成
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // Ensure cancel is called in all paths
+	// バックグラウンドでのキャンセルを防ぐため、背景コンテキストを使用
+	ctx := context.Background()
+	// 明示的なキャンセルのためのキャンセル関数を作成
+	ctx, cancel := context.WithCancel(ctx)
+
+	// クリーンアップ関数
+	cleanup := func() {
+		cancel() // コンテキストをキャンセル
+
+		// セッションを削除
+		activeSessionsMutex.Lock()
+		delete(activeSessions, sessionID)
+		activeSessionsMutex.Unlock()
+
+		// WebSocket接続を閉じる
+		conn.Close()
+		log.Printf("セッション %s を終了しました", sessionID)
+	}
 
 	// Speech Translation設定
 	log.Printf("Speech Translation設定の作成開始: key=%s, region=%s", speechSubscriptionKey[:5]+"...", speechRegion)
@@ -246,10 +262,10 @@ func WebSocketHandler(c *gin.Context) {
 	}
 	log.Printf("Speech Translation設定の作成完了")
 
-	// オーディオ設定（デフォルトマイク）
+	// オーディオ設定（カスタムストリーム）
 	log.Printf("オーディオ設定の作成開始")
-	reader := gospeech.NewWaveFormatReader()            // 新しいWaveFormatReaderを作成
-	audioConfig, err := gospeech.NewAudioConfig(reader) // カスタムオーディオソースを使用
+	pushStream := gospeech.NewPushAudioInputStream(gospeech.GetDefaultInputFormat())
+	audioConfig, err := gospeech.NewAudioConfigFromPushStream(pushStream)
 	if err != nil {
 		log.Printf("オーディオ設定の作成に失敗しました: %v", err)
 		conn.Close()
@@ -379,18 +395,25 @@ func WebSocketHandler(c *gin.Context) {
 	})
 
 	// 連続認識を開始
-	log.Printf("連続認識の開始")
+	log.Printf("[DEBUG] 連続認識の開始前: sessionID=%s", sessionID)
+	log.Printf("[DEBUG] 音声認識器情報: %+v", recognizer)
+	log.Printf("[DEBUG] オーディオソース情報: SourceType=%s", audioConfig.SourceType())
 	if err := recognizer.StartContinuousRecognition(ctx); err != nil {
 		log.Printf("連続認識の開始に失敗しました: %v", err)
 		conn.WriteJSON(gin.H{"error": "連続認識の開始に失敗しました"})
 		conn.Close()
 		return
 	}
-	log.Printf("連続認識を開始しました")
+	log.Printf("[DEBUG] 連続認識を正常に開始しました: sessionID=%s", sessionID)
 
-	// WebSocketのクローズを監視
-	go func() {
-		defer func() {
+	// WebSocketのクローズを監視するメイン処理
+	for {
+		// クライアントからのメッセージを待機
+		messageType, message, err := conn.ReadMessage()
+		if err != nil {
+			// クライアントが切断した場合など
+			log.Printf("WebSocket読み取りエラー: %v", err)
+
 			// 連続認識を停止
 			if err := recognizer.StopContinuousRecognition(); err != nil {
 				log.Printf("連続認識の停止に失敗しました: %v", err)
@@ -401,30 +424,138 @@ func WebSocketHandler(c *gin.Context) {
 				log.Printf("認識器のクリーンアップに失敗しました: %v", err)
 			}
 
-			// セッションを削除
-			activeSessionsMutex.Lock()
-			delete(activeSessions, sessionID)
-			activeSessionsMutex.Unlock()
+			// クリーンアップ処理を実行
+			cleanup()
+			return
+		}
 
-			// キャンセル関数を呼び出し
-			cancel()
+		// メッセージを処理（必要に応じて）
+		log.Printf("[DEBUG] クライアントからメッセージを受信: type=%d, dataSize=%d bytes", messageType, len(message))
 
-			// WebSocket接続を閉じる
-			conn.Close()
+		// データのプレビューを表示（長いデータの場合は最初の100文字だけ）
+		previewLimit := 100
+		messagePreview := string(message)
+		if len(messagePreview) > previewLimit {
+			messagePreview = messagePreview[:previewLimit] + "..." // 長いメッセージは省略
+		}
+		log.Printf("[DEBUG] メッセージプレビュー: %s", messagePreview)
 
-			log.Printf("セッション %s を終了しました", sessionID)
-		}()
+		// メッセージがテキストメッセージの場合はJSONとして解析
+		if messageType == websocket.TextMessage {
+			// 最初に一般的なJSONとして解析し、メッセージタイプをチェック
+			var jsonMsg map[string]interface{}
+			if err := json.Unmarshal(message, &jsonMsg); err != nil {
+				log.Printf("JSONの解析に失敗しました: %v", err)
+				continue
+			}
 
-		for {
-			// クライアントからのメッセージを待機
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				// クライアントが切断した場合など
-				log.Printf("WebSocket読み取りエラー: %v", err)
+			// クローズメッセージかどうかをチェック
+			if msgType, ok := jsonMsg["type"].(string); ok && msgType == "close" {
+				log.Printf("クライアントからセッション終了リクエストを受信")
+				// 連続認識を停止
+				if err := recognizer.StopContinuousRecognition(); err != nil {
+					log.Printf("連続認識の停止に失敗しました: %v", err)
+				}
+				cleanup()
 				return
 			}
+
+			// audioフィールドがあるかチェック（音声データの可能性）
+			_, hasAudio := jsonMsg["audio"]
+			_, hasAudioData := jsonMsg["audioData"]
+
+			// 音声データを処理
+			if hasAudio || hasAudioData || jsonMsg["type"] == "audio" {
+				log.Printf("[DEBUG] 音声データを含むJSONメッセージを検出しました")
+
+				// 音声データの構造体を定義
+				var audioMsg struct {
+					Type      string `json:"type"`
+					AudioData string `json:"audioData"`
+					// フロントエンドのJSON形式が異なる場合の対応
+					Audio *struct {
+						Data string `json:"data"`
+					} `json:"audio"`
+				}
+
+				// メッセージを再解析
+				if err := json.Unmarshal(message, &audioMsg); err != nil {
+					log.Printf("音声JSONの解析に失敗しました: %v", err)
+					continue
+				}
+
+				// audioDataフィールドを確認
+				audioDataStr := audioMsg.AudioData
+
+				// audioDataがない場合、audioオブジェクト内のdataフィールドを確認
+				if audioDataStr == "" && audioMsg.Audio != nil && audioMsg.Audio.Data != "" {
+					audioDataStr = audioMsg.Audio.Data
+					log.Printf("[DEBUG] audio.data形式から音声データを取得しました: 長さ=%d字", len(audioDataStr))
+				}
+
+				if (audioMsg.Type == "audio" && audioDataStr != "") || audioDataStr != "" {
+					// Base64デコード
+					audioData, err := base64.StdEncoding.DecodeString(audioDataStr)
+					if err != nil {
+						log.Printf("Base64デコードに失敗しました: %v", err)
+						continue
+					}
+
+					// デバッグ: Base64デコードされた音声データの最初の20バイトを16進数で表示
+					previewSize := 20
+					if len(audioData) < previewSize {
+						previewSize = len(audioData)
+					}
+					hexPreview := fmt.Sprintf("%X", audioData[:previewSize])
+					log.Printf("[DEBUG] Base64デコード後の音声データプレビュー（最初の%dバイト）: %s", previewSize, hexPreview)
+
+					// 音声データをPushAudioInputStreamに書き込む
+					pushStream, ok := audioConfig.Source().(*gospeech.PushAudioInputStream)
+					if !ok {
+						log.Printf("オーディオソースがPushAudioInputStreamではありません: %T", audioConfig.Source())
+						continue
+					}
+
+					// 音声データを書き込む
+					bytesWritten, err := pushStream.Write(audioData)
+					if err != nil {
+						log.Printf("音声データの書き込みに失敗しました: %v", err)
+						continue
+					}
+
+					log.Printf("[DEBUG] Base64音声データをPushAudioInputStreamに書き込みました: 受信=%d バイト, 書き込み=%d バイト", len(audioData), bytesWritten)
+				} else {
+					log.Printf("[DEBUG] 音声データが見つかりませんでした: %+v", audioMsg)
+				}
+			} else {
+				log.Printf("[DEBUG] 不明なテキストメッセージを受信: %s", messagePreview)
+			}
+		} else if messageType == websocket.BinaryMessage {
+			// 音声データをPushAudioInputStreamに書き込む
+			pushStream, ok := audioConfig.Source().(*gospeech.PushAudioInputStream)
+			if !ok {
+				log.Printf("オーディオソースがPushAudioInputStreamではありません: %T", audioConfig.Source())
+				continue
+			}
+
+			// デバッグ: 音声データの最初の20バイトを16進数で表示（データの形式確認用）
+			previewSize := 20
+			if len(message) < previewSize {
+				previewSize = len(message)
+			}
+			hexPreview := fmt.Sprintf("%X", message[:previewSize])
+			log.Printf("[DEBUG] 音声データプレビュー（最初の%dバイト）: %s", previewSize, hexPreview)
+
+			// 音声データを書き込む
+			bytesWritten, err := pushStream.Write(message)
+			if err != nil {
+				log.Printf("音声データの書き込みに失敗しました: %v", err)
+				continue
+			}
+
+			log.Printf("[DEBUG] 音声データをPushAudioInputStreamに書き込みました: 受信=%d バイト, 書き込み=%d バイト", len(message), bytesWritten)
 		}
-	}()
+	}
 }
 
 // CloseStreamingSessionHandler はストリーミングセッションを終了するハンドラー
