@@ -1,103 +1,119 @@
-import { Box, Button, Paper, Typography, CircularProgress } from '@mui/material';
+import React, { useState } from 'react';
+import './RealtimeTranslation.css';
 import { useTranslation } from '../../hooks/useTranslation';
-import { useCallback } from 'react';
 
-export const RealtimeTranslation = () => {
+export const RealtimeTranslation: React.FC = () => {
+  const [sourceLanguage, setSourceLanguage] = useState<string>('ja-JP');
+  const [targetLanguage, setTargetLanguage] = useState<string>('en');
   const { isRecording, translations, error, startRecording, stopRecording } = useTranslation();
 
-  const handleToggleRecording = useCallback(() => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  }, [isRecording, startRecording, stopRecording]);
+  // 言語オプション
+  const languageOptions = [
+    { value: 'ja-JP', label: '日本語' },
+    { value: 'en-US', label: '英語' },
+    { value: 'es-ES', label: 'スペイン語' },
+    { value: 'fr-FR', label: 'フランス語' },
+    { value: 'de-DE', label: 'ドイツ語' },
+    { value: 'zh-CN', label: '中国語 (簡体字)' },
+  ];
+
+  const targetLanguageOptions = [
+    { value: 'en', label: '英語' },
+    { value: 'ja', label: '日本語' },
+    { value: 'es', label: 'スペイン語' },
+    { value: 'fr', label: 'フランス語' },
+    { value: 'de', label: 'ドイツ語' },
+    { value: 'zh-Hans', label: '中国語 (簡体字)' },
+  ];
+
+  const handleStartTranslation = async () => {
+    await startRecording(sourceLanguage, targetLanguage);
+  };
+
+  const handleStopTranslation = async () => {
+    await stopRecording();
+  };
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4, p: 2 }}>
-      <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 3 }}>
-        リアルタイム翻訳
-      </Typography>
-
-      {error && (
-        <Typography color="error" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
-      )}
-
-      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Button
-          variant="contained"
-          color={isRecording ? 'error' : 'primary'}
-          onClick={handleToggleRecording}
-          startIcon={isRecording ? null : <span>🎤</span>}
-          disabled={!!error}
-        >
-          {isRecording ? '停止' : '録音開始'}
-        </Button>
-        {isRecording && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CircularProgress size={20} />
-            <Typography variant="body2" color="text.secondary">
-              録音中...
-            </Typography>
-          </Box>
-        )}
-      </Box>
-
-      <Paper
-        elevation={3}
-        sx={{
-          p: 3,
-          minHeight: 200,
-          maxHeight: 400,
-          overflowY: 'auto',
-          bgcolor: 'background.paper',
-          position: 'relative',
-        }}
-      >
-        {translations.length > 0 ? (
-          translations.map((translation, index) => (
-            <Box
-              key={`${translation.segmentId}-${index}`}
-              sx={{
-                mb: 2,
-                transition: 'opacity 0.3s ease-in-out',
-              }}
+    <div className="realtime-translation-container">
+      <h2>リアルタイム音声翻訳</h2>
+      
+      <div className="controls">
+        <div className="language-selectors">
+          <div className="language-selector">
+            <label>音声言語:</label>
+            <select
+              value={sourceLanguage}
+              onChange={(e) => setSourceLanguage(e.target.value)}
+              disabled={isRecording}
             >
-              <Typography
-                variant="body1"
-                sx={{
-                  opacity: translation.isFinal ? 1 : 0.7,
-                  fontStyle: translation.isFinal ? 'normal' : 'italic',
-                  color: translation.isFinal ? 'text.primary' : 'text.secondary',
-                }}
+              {languageOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="language-selector">
+            <label>翻訳言語:</label>
+            <select
+              value={targetLanguage}
+              onChange={(e) => setTargetLanguage(e.target.value)}
+              disabled={isRecording}
+            >
+              {targetLanguageOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        
+        <div className="action-buttons">
+          {!isRecording ? (
+            <button onClick={handleStartTranslation} className="start-button">
+              翻訳開始
+            </button>
+          ) : (
+            <button onClick={handleStopTranslation} className="stop-button">
+              翻訳停止
+            </button>
+          )}
+        </div>
+      </div>
+      
+      <div className="status-bar">
+        <span className={`status-indicator ${isRecording ? 'active' : ''}`}></span>
+        <span className="status-text">{isRecording ? '認識中' : '待機中'}</span>
+      </div>
+      
+      {error && <div className="error-message">{error}</div>}
+      
+      <div className="translations-container">
+        {translations.length > 0 ? (
+          <div className="translations-list">
+            {translations.map((translation, index) => (
+              <div
+                key={`${translation.segmentId}-${index}`}
+                className={`translation-item ${translation.isFinal ? 'final' : 'interim'}`}
               >
-                {translation.translatedText}
-              </Typography>
-            </Box>
-          ))
+                <div className="translation-text">{translation.translatedText}</div>
+                {translation.originalText && (
+                  <div className="original-text">{translation.originalText}</div>
+                )}
+              </div>
+            ))}
+          </div>
         ) : (
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              minHeight: 160,
-              color: 'text.secondary',
-            }}
-          >
-            <Typography variant="body1" sx={{ mb: 1 }}>
-              🎤 録音を開始すると、ここに翻訳結果が表示されます
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              マイクへのアクセスを許可してください
-            </Typography>
-          </Box>
+          <div className="no-translations">
+            {isRecording ? 'お話しください...' : '翻訳を開始するには「翻訳開始」ボタンをクリックしてください'}
+          </div>
         )}
-      </Paper>
-    </Box>
+      </div>
+    </div>
   );
 };
+
+export default RealtimeTranslation;

@@ -11,43 +11,73 @@ export const useTranslation = () => {
   const [error, setError] = useState<string | null>(null);
 
   const recorder = useRef<RecordRTCPromisesHandler | null>(null);
-  const sessionId = useRef<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const mediaStream = useRef<MediaStream | null>(null);
 
-  const processAudioData = async (audioData: Blob) => {
-    if (!sessionId.current) return;
+  // WebSocketの設定と管理
+  const setupWebSocket = (sourceLanguage: string, targetLanguage: string) => {
+    const ws = new WebSocket(`ws://localhost:8080/api/v1/streaming/ws/${Date.now()}`);
 
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64Audio = (reader.result as string).split(',')[1];
-      try {
-        const responses = await translationService.processAudioChunk({
-          sessionId: sessionId.current!,
-          audioChunk: base64Audio,
+    ws.onopen = () => {
+      console.log('WebSocket connected, sending initial setup message');
+      // 初期設定を送信
+      const setupMsg = {
+        sourceLanguage,
+        targetLanguage,
+        audioFormat: 'audio/wav',
+      };
+      console.log('Sending setup message:', setupMsg);
+      ws.send(JSON.stringify(setupMsg));
+    };
+
+    ws.onmessage = (event) => {
+      console.log('Received WebSocket message:', event.data);
+      const data = JSON.parse(event.data);
+      if (data.status === 'ready') {
+        console.log('WebSocket ready for streaming');
+      } else if (data.translatedText) {
+        console.log('Received translation result:', data);
+        setTranslations(prev => {
+          const newTranslation: StreamingTranslationResponse = {
+            sourceLanguage: data.sourceLanguage,
+            targetLanguage: data.targetLanguage,
+            translatedText: data.translatedText,
+            originalText: data.originalText,
+            isFinal: data.isFinal,
+            segmentId: data.segmentId
+          };
+
+          if (data.isFinal) {
+            console.log('Adding final translation result');
+            return [...prev, newTranslation];
+          } else {
+            console.log('Updating interim translation result');
+            const updatedTranslations = [...prev];
+            if (updatedTranslations.length > 0 && !updatedTranslations[updatedTranslations.length - 1].isFinal) {
+              updatedTranslations[updatedTranslations.length - 1] = newTranslation;
+            } else {
+              updatedTranslations.push(newTranslation);
+            }
+            return updatedTranslations;
+          }
         });
-        if (responses.length > 0) {
-          setTranslations(prev => {
-            // 同じsegmentIdの場合は更新、新しいsegmentIdの場合は追加
-            const newTranslations = [...prev];
-            responses.forEach(response => {
-              const index = newTranslations.findIndex(t => t.segmentId === response.segmentId);
-              if (index !== -1) {
-                newTranslations[index] = response;
-              } else {
-                newTranslations.push(response);
-              }
-            });
-            return newTranslations;
-          });
-        }
-      } catch (err) {
-        console.error('音声チャンクの処理中にエラーが発生しました:', err);
       }
     };
-    reader.readAsDataURL(audioData);
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setError('WebSocketの接続中にエラーが発生しました');
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed');
+      wsRef.current = null;
+    };
+
+    return ws;
   };
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (sourceLanguage: string, targetLanguage: string) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
@@ -56,31 +86,42 @@ export const useTranslation = () => {
           sampleRate: 16000,
         } 
       });
+      
       mediaStream.current = stream;
+      
+      // WebSocket接続の確立
+      wsRef.current = setupWebSocket(sourceLanguage, targetLanguage);
 
-      // ストリーミングセッションを開始
-      sessionId.current = await translationService.startStreamingSession({
-        sourceLanguage: 'ja',
-        targetLanguage: 'en',
-        audioFormat: 'wav',
-      });
-
+      // RecordRTCの設定
       recorder.current = new RecordRTCPromisesHandler(stream, {
         type: 'audio',
         mimeType: 'audio/wav',
         recorderType: RecordRTC.StereoAudioRecorder,
-        timeSlice: 250, // 250msごとにデータを取得
+        timeSlice: 1000, // 1秒ごとにデータを送信
         desiredSampRate: 16000,
-        ondataavailable: (blob: Blob) => {
-          processAudioData(blob);
-        },
+        numberOfAudioChannels: 1,
+        ondataavailable: async (blob) => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64Audio = (reader.result as string).split(',')[1];
+              wsRef.current?.send(JSON.stringify({
+                audio: {
+                  data: base64Audio
+                }
+              }));
+            };
+            reader.readAsDataURL(blob);
+          }
+        }
       });
 
       await recorder.current.startRecording();
       setIsRecording(true);
+      setError(null);
     } catch (err) {
-      setError('マイクの使用許可が必要です。');
-      console.error('録音の開始に失敗しました:', err);
+      console.error('Error starting recording:', err);
+      setError('マイクへのアクセスに失敗しました。');
     }
   }, []);
 
@@ -90,14 +131,13 @@ export const useTranslation = () => {
         return;
       }
       
-      // 録音を停止
       await recorder.current.stopRecording();
       recorder.current = null;
 
-      // セッションを終了
-      if (sessionId.current) {
-        await translationService.closeStreamingSession(sessionId.current);
-        sessionId.current = null;
+      // WebSocket接続を閉じる
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
 
       // メディアストリームを停止
@@ -108,8 +148,8 @@ export const useTranslation = () => {
 
       setError(null);
     } catch (err) {
-      console.error('録音の停止中にエラーが発生しました:', err);
-      setError('録音の停止中にエラーが発生しました。ページを再読み込みしてください。');
+      console.error('Error stopping recording:', err);
+      setError('録音の停止中にエラーが発生しました。');
     } finally {
       setIsRecording(false);
     }
@@ -121,9 +161,9 @@ export const useTranslation = () => {
         recorder.current.stopRecording().catch(console.error);
         recorder.current = null;
       }
-      if (sessionId.current) {
-        translationService.closeStreamingSession(sessionId.current).catch(console.error);
-        sessionId.current = null;
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
       if (mediaStream.current) {
         mediaStream.current.getTracks().forEach(track => track.stop());

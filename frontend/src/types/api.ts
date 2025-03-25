@@ -22,6 +22,7 @@ export interface StreamingTranslationResponse {
   sourceLanguage: string;
   targetLanguage: string;
   translatedText: string;
+  originalText: string;
   isFinal: boolean;
   segmentId: string;
 }

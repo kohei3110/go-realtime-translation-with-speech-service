@@ -18,17 +18,30 @@ func main() {
 		log.Fatalf("認証情報の取得に失敗しました: %v", err)
 	}
 
-	// 2. Speech Serviceのエンドポイント設定
-	endpoint := "https://api.cognitive.microsofttranslator.com/"
+	// 2. Translator Serviceのエンドポイント設定
+	translatorEndpoint := "https://api.cognitive.microsofttranslator.com/"
 
 	// 3. TranslatorClientの作成
-	client, err := translatortext.NewTranslatorClient(endpoint, cred, nil)
+	client, err := translatortext.NewTranslatorClient(translatorEndpoint, cred, nil)
 	if err != nil {
 		log.Fatalf("TranslatorClientの作成に失敗しました: %v", err)
 	}
 
+	// 4. Speech Serviceの認証情報の取得（環境変数から）
+	speechKey := os.Getenv("SPEECH_SERVICE_KEY")
+	speechRegion := os.Getenv("SPEECH_SERVICE_REGION")
+
+	if speechKey == "" || speechRegion == "" {
+		log.Fatalf("エラー: Speech Serviceの認証情報が設定されていません。SPEECH_SERVICE_KEYとSPEECH_SERVICE_REGIONの環境変数を設定してください。")
+	}
+
+	log.Printf("Speech Service設定: Region=%s", speechRegion)
+
 	// ハンドラーに翻訳クライアントをセット
 	handlers.SetTranslatorClient(client)
+
+	// ハンドラーにSpeech Service認証情報をセット
+	handlers.SetSpeechCredentials(speechKey, speechRegion)
 
 	// Ginルーターの設定
 	router := gin.Default()
@@ -63,6 +76,9 @@ func main() {
 			streaming.POST("/start", handlers.StartStreamingSessionHandler)
 			streaming.POST("/process", handlers.ProcessAudioChunkHandler)
 			streaming.POST("/close", handlers.CloseStreamingSessionHandler)
+
+			// WebSocketエンドポイント - リアルタイム音声認識・翻訳用
+			streaming.GET("/ws/:sessionId", handlers.WebSocketHandler)
 		}
 	}
 
@@ -73,7 +89,7 @@ func main() {
 	}
 
 	// サーバーの起動
-	log.Printf("Server is running on port %s", port)
+	log.Printf("Speech Recognition and Translation Server is running on port %s", port)
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("サーバーの起動に失敗しました: %v", err)
 	}
