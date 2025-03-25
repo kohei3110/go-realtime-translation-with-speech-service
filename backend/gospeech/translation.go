@@ -911,7 +911,7 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 	requestID := uuid.New().String()
 
 	// 言語コードの正規化と検証
-	normalizedSourceLang := normalizeLanguageCode(sc.sourceLanguage)
+	normalizedSourceLang := normalizeLanguageCode(sc.sourceLanguage, true)
 	if normalizedSourceLang == "" {
 		return fmt.Errorf("invalid source language code: %s", sc.sourceLanguage)
 	}
@@ -920,7 +920,7 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 	// ターゲット言語の正規化と検証
 	normalizedTargetLangs := make([]string, 0, len(sc.languages))
 	for _, lang := range sc.languages {
-		normalized := normalizeLanguageCode(lang)
+		normalized := normalizeLanguageCode(lang, false)
 		if normalized == "" {
 			return fmt.Errorf("invalid target language code: %s", lang)
 		}
@@ -933,8 +933,8 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 		"context": map[string]interface{}{
 			"system": map[string]interface{}{
 				"name":    "SpeechSDK",
-				"version": "1.28.0",
-				"build":   "JavaScript",
+				"version": "1.30.0", // バージョンを更新
+				"build":   "Go",     // JavaScriptからGoに変更
 			},
 		},
 		"config": map[string]interface{}{
@@ -943,11 +943,19 @@ func (sc *speechServiceConnection) sendAudioData(data []byte) error {
 				"translationLanguages":         normalizedTargetLangs,
 				"sourceLanguageForTranslation": normalizedSourceLang,
 				"features": map[string]interface{}{
-					"enableTranslation": true,
+					"enableTranslation":   true,
+					"wordLevelTimestamps": true,       // 単語レベルのタイムスタンプを有効化
+					"punctuation":         "explicit", // 句読点を明示的に追加
 				},
+				"profanity":               "masked",                 // 不適切な表現を伏せ字に
+				"timeToDetectEndOfSpeech": "1500",                   // 音声終了検出時間を1.5秒に
+				"scenarios":               []string{"conversation"}, // 会話シナリオに最適化
 			},
 			"input": map[string]interface{}{
 				"format": "audio/x-wav",
+				"audioParameters": map[string]interface{}{
+					"sampleRate": 16000,
+				},
 			},
 		},
 	}
@@ -1123,22 +1131,12 @@ func calculateAudioLevel(buffer []byte, n int) int {
 	return level
 }
 
-// normalizeLanguageCode は言語コードをBCP-47形式に正規化します
-func normalizeLanguageCode(lang string) string {
+// normalizeLanguageCode は言語コードをBCP-47形式、もしくは単純な言語コードに正規化します
+func normalizeLanguageCode(lang string, isSourceLanguage bool) string {
 	// 空白を削除し、小文字に変換
 	lang = strings.TrimSpace(lang)
-
-	// 既にBCP-47形式（xx-XX）の場合はバリデーションを行う
-	if strings.Contains(lang, "-") {
-		parts := strings.Split(lang, "-")
-		if len(parts) != 2 {
-			log.Printf("[WARNING] 無効な言語コード形式: %s", lang)
-			return ""
-		}
-		// 言語コードは小文字、地域コードは大文字に正規化
-		langCode := strings.ToLower(parts[0])
-		regionCode := strings.ToUpper(parts[1])
-		return fmt.Sprintf("%s-%s", langCode, regionCode)
+	if lang == "" {
+		return ""
 	}
 
 	// 言語コードのマッピング
@@ -1161,9 +1159,34 @@ func normalizeLanguageCode(lang string) string {
 		"ms": "ms-MY",
 	}
 
-	// 小文字に変換してマッピングを検索
-	if normalized, ok := langMap[strings.ToLower(lang)]; ok {
-		return normalized
+	if isSourceLanguage {
+		// ソース言語の場合は完全なBCP-47形式が必要
+		if strings.Contains(lang, "-") {
+			parts := strings.Split(lang, "-")
+			if len(parts) != 2 {
+				log.Printf("[WARNING] 無効な言語コード形式: %s", lang)
+				return ""
+			}
+			// 言語コードは小文字、地域コードは大文字に正規化
+			langCode := strings.ToLower(parts[0])
+			regionCode := strings.ToUpper(parts[1])
+			return fmt.Sprintf("%s-%s", langCode, regionCode)
+		}
+
+		// マッピングを使用して完全な形式に変換
+		if normalized, ok := langMap[strings.ToLower(lang)]; ok {
+			return normalized
+		}
+	} else {
+		// ターゲット言語の場合は言語コードのみ必要
+		if strings.Contains(lang, "-") {
+			// ハイフンが含まれている場合は言語部分のみを取得
+			parts := strings.Split(lang, "-")
+			return strings.ToLower(parts[0])
+		}
+
+		// 既に言語コードのみの場合はそのまま小文字で返す
+		return strings.ToLower(lang)
 	}
 
 	log.Printf("[WARNING] サポートされていない言語コード: %s", lang)
